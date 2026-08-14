@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # 脚本名称: disk_analyzer.sh
-# 功能说明: 磁盘专项深度分析，采集空间、I/O、inode、大文件、健康状态
+# 功能说明: 磁盘专项深度分析，采集空间、I/O、inode、大文件、Docker 空间占用、健康状态
 #             默认跳过实时 I/O 负载快照，输出标准 Markdown 报告文件
 # 适用系统: Linux (CentOS/Ubuntu/Debian/RHEL)
 # 依赖工具: sysstat(iostat), smartmontools(smartctl), bc, lsblk, find, du
@@ -14,7 +14,8 @@
 
 # --- 配置区 ---
 # 报告输出路径，可自定义为 /var/log/disk_report.md 等
-REPORT_PATH="/tmp/disk_report.md"
+# 文件名自动附带时间戳，避免多次执行覆盖历史报告
+REPORT_PATH="/tmp/disk_report_$(date '+%Y%m%d_%H%M%S').md"
 
 # 大文件扫描超时（秒），防止从根目录扫描耗时过长
 LARGE_FILE_SCAN_TIMEOUT=30
@@ -65,6 +66,7 @@ else
 fi
 echo "> **主机名:** $(hostname)  "
 echo "> **采集时间:** $(date '+%Y-%m-%d %H:%M:%S')  "
+echo "> **报告文件:** \`$REPORT_PATH\`  "
 echo "> **操作系统:** ${OS_NAME}  "
 echo "> **内核版本:** $(uname -r)  "
 echo ""
@@ -514,13 +516,238 @@ mount 2>/dev/null | grep -E '^/dev/' | awk '
 echo ""
 
 # ==============================================================================
-# 10. 实时 I/O 负载快照（默认关闭）
+# 10. Docker 空间占用专项扫描
+# ==============================================================================
+echo "## 10. Docker 空间占用专项扫描"
+echo ""
+if ! command -v docker &> /dev/null; then
+    echo "> ℹ️ 未安装 Docker，跳过本节。"
+    echo ""
+else
+    # --- 10.1 Docker 总体空间概览 ---
+    echo "### 10.1 Docker 总体空间概览"
+    echo ""
+    echo "> **说明:** 展示 Docker 镜像、容器、卷、构建缓存的总占用及可回收空间"
+    echo ""
+    echo "| 类型 | 总量 | 活跃 | 大小 | 可回收 |"
+    echo "|------|------|------|------|--------|"
+    docker system df --format "table {{.Type}}\t{{.TotalCount}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}" 2>/dev/null | tail -n +2 | while IFS=$'\t' read -r type total active size reclaimable; do
+        printf "| %s | %s | %s | %s | %s |\n" "$type" "$total" "$active" "$size" "$reclaimable"
+    done
+    echo ""
+
+    # --- 10.2 Docker 数据目录总大小 ---
+    echo "### 10.2 Docker 数据目录总大小"
+    echo ""
+    # Docker 默认数据目录通常为 /var/lib/docker
+    DOCKER_DATA_DIR="/var/lib/docker"
+    if [ -d "$DOCKER_DATA_DIR" ]; then
+        docker_total=$(du -sh "$DOCKER_DATA_DIR" 2>/dev/null | awk '{print $1}')
+        echo "> **Docker 数据目录 \`$DOCKER_DATA_DIR\` 总大小:** ${docker_total:-未知}"
+        echo ""
+        echo "| 子目录 | 大小 |"
+        echo "--------|------|"
+        du -sh "$DOCKER_DATA_DIR"/*/ 2>/dev/null | sort -rh | while read -r size path; do
+            dir_name=$(basename "$path")
+            printf "| %s | %s |\n" "$dir_name" "$size"
+        done
+    else
+        # 尝试通过 docker info 获取 Docker Root Dir
+        DOCKER_ROOT=$(docker info 2>/dev/null | grep "Docker Root Dir" | awk -F': ' '{print $2}')
+        if [ -n "$DOCKER_ROOT" ] && [ -d "$DOCKER_ROOT" ]; then
+            docker_total=$(du -sh "$DOCKER_ROOT" 2>/dev/null | awk '{print $1}')
+            echo "> **Docker 数据目录 \`$DOCKER_ROOT\` 总大小:** ${docker_total:-未知}"
+            echo ""
+            echo "| 子目录 | 大小 |"
+            echo "|--------|------|"
+            du -sh "$DOCKER_ROOT"/*/ 2>/dev/null | sort -rh | while read -r size path; do
+                dir_name=$(basename "$path")
+                printf "| %s | %s |\n" "$dir_name" "$size"
+            done
+        else
+            echo "> ⚠️ 无法定位 Docker 数据目录（权限不足或非标准路径）"
+        fi
+    fi
+    echo ""
+
+    # --- 10.3 镜像详情（按大小降序 Top15）---
+    echo "### 10.3 镜像占用 Top15"
+    echo ""
+    echo "> **说明:** 展示占用空间最大的镜像，`<none>` 为悬空镜像，可安全清理"
+    echo ""
+    echo "| 镜像仓库:标签 | 镜像 ID | 大小 | 创建时间 |"
+    echo "|---------------|---------|------|----------|"
+    docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedSince}}" 2>/dev/null | tail -n +2 | head -15 | while IFS=$'\t' read -r repo id size created; do
+        # 清理空白标签
+        repo=$(echo "$repo" | sed 's/:<none>$/<none>/')
+        printf "| %s | %s | %s | %s |\n" "$repo" "$id" "$size" "$created"
+    done
+    echo ""
+
+    # 悬空镜像数量与大小
+    dangling_count=$(docker images -f "dangling=true" -q 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$dangling_count" -gt 0 ]; then
+        echo "> ⚠️ **发现 ${dangling_count} 个悬空镜像（dangling images）**，可通过 \`docker image prune\` 清理"
+        echo ""
+    fi
+
+    # --- 10.4 容器空间占用 Top10 ---
+    echo "### 10.4 容器空间占用 Top10"
+    echo ""
+    echo "> **说明:** 展示可写层占用空间最大的容器，`SIZE` 列含虚拟大小和实际写入大小"
+    echo ""
+    echo "| 容器名 | 镜像 | 状态 | 可写层大小 |"
+    echo "|--------|------|------|------------|"
+    docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Size}}" 2>/dev/null | tail -n +2 | head -10 | while IFS=$'\t' read -r name image status size; do
+        printf "| %s | %s | %s | %s |\n" "$name" "$image" "$status" "$size"
+    done
+    echo ""
+
+    # --- 10.5 Volume 卷占用 Top15 ---
+    echo "### 10.5 Volume 卷占用 Top15"
+    echo ""
+    echo "> **说明:** 大体积卷通常是数据库、日志持久化等场景，注意区分活跃卷与孤立卷"
+    echo ""
+    echo "| 卷名称 | 驱动 | 挂载点 |"
+    echo "|--------|------|--------|"
+    docker volume ls --format "table {{.Name}}\t{{.Driver}}\t{{.Mountpoint}}" 2>/dev/null | tail -n +2 | head -15 | while IFS=$'\t' read -r name driver mountpoint; do
+        printf "| %s | %s | %s |\n" "$name" "$driver" "$mountpoint"
+    done
+    echo ""
+
+    # 统计各卷实际大小（需遍历挂载点）
+    echo "#### 卷实际磁盘占用"
+    echo ""
+    echo "| 大小 | 卷名称 |"
+    echo "|------|--------|"
+    docker volume ls -q 2>/dev/null | while read -r vol; do
+        mountpoint=$(docker volume inspect --format '{{.Mountpoint}}' "$vol" 2>/dev/null)
+        if [ -n "$mountpoint" ] && [ -d "$mountpoint" ]; then
+            vol_size=$(du -sh "$mountpoint" 2>/dev/null | awk '{print $1}')
+            echo "${vol_size:-0}	$vol"
+        fi
+    done | sort -rh | head -15 | while IFS=$'\t' read -r size vol; do
+        printf "| %s | %s |\n" "$size" "$vol"
+    done
+    echo ""
+
+    # 孤立卷提示
+    orphan_vols=0
+    for vol in $(docker volume ls -q 2>/dev/null); do
+        ref=$(docker ps -a --filter volume="$vol" -q 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$ref" -eq 0 ]; then
+            orphan_vols=$((orphan_vols + 1))
+        fi
+    done
+    if [ "$orphan_vols" -gt 0 ]; then
+        echo "> ⚠️ **发现 ${orphan_vols} 个孤立卷（未被任何容器引用）**，可通过 \`docker volume prune\` 清理"
+        echo ""
+    fi
+
+    # --- 10.6 构建缓存 ---
+    echo "### 10.6 构建缓存"
+    echo ""
+    echo "> **说明:** Docker BuildKit 构建缓存可能占用大量空间，可通过 \`docker builder prune\` 清理"
+    echo ""
+    if docker buildx du 2>/dev/null | head -1 | grep -q .; then
+        echo "| 类型 | 大小 | 是否活跃 |"
+        echo "|------|------|----------|"
+        docker buildx du 2>/dev/null | awk 'NR>1 && NF>=3 {printf "| %s | %s | %s |\n", $1, $2, $3}' | head -15
+        echo ""
+        # 构建缓存总量
+        build_total=$(docker buildx du 2>/dev/null | tail -1)
+        echo "> **构建缓存总计:** $build_total"
+    else
+        # 回退到 docker system df 中的 Build Cache 行
+        build_info=$(docker system df 2>/dev/null | grep "Build Cache")
+        if [ -n "$build_info" ]; then
+            echo "\`\`\`"
+            echo "$build_info"
+            echo "\`\`\`"
+        else
+            echo "> ℹ️ 无构建缓存数据（可能未使用 BuildKit 或无缓存）"
+        fi
+    fi
+    echo ""
+
+    # --- 10.7 Docker 日志文件扫描 ---
+    echo "### 10.7 Docker 日志文件扫描"
+    echo ""
+    echo "> **说明:** 容器日志（json-file 驱动）不做轮转时会无限膨胀，是磁盘满的常见原因"
+    echo ""
+
+    # 扫描 Docker 日志目录下的大文件
+    DOCKER_LOG_DIR=""
+    if [ -d "/var/lib/docker/containers" ]; then
+        DOCKER_LOG_DIR="/var/lib/docker/containers"
+    elif [ -n "$DOCKER_ROOT" ] && [ -d "$DOCKER_ROOT/containers" ]; then
+        DOCKER_LOG_DIR="$DOCKER_ROOT/containers"
+    fi
+
+    if [ -n "$DOCKER_LOG_DIR" ]; then
+        echo "#### 大于 100MB 的容器日志文件"
+        echo ""
+        echo "| 大小 | 文件路径 |"
+        echo "|------|----------|"
+        find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -size +100M 2>/dev/null | while read -r logfile; do
+            size=$(du -h "$logfile" 2>/dev/null | awk '{print $1}')
+            echo "| $size | $logfile |"
+        done
+        echo ""
+
+        # 日志总大小
+        log_total=$(find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -exec du -ck {} + 2>/dev/null | tail -1 | awk '{print $1}')
+        if [ -n "$log_total" ] && [ "$log_total" -gt 0 ]; then
+            echo "> **容器日志文件总大小:** $(hr_kb "$log_total")"
+            echo ""
+        fi
+    else
+        echo "> ⚠️ 无法定位 Docker 容器日志目录（权限不足或非标准路径）"
+        echo ""
+    fi
+
+    # 列出当前运行容器的日志大小 Top10
+    echo "#### 运行中容器日志大小 Top10"
+    echo ""
+    echo "| 日志大小 | 容器名 | 容器 ID |"
+    echo "|----------|--------|---------|"
+    docker ps --format "{{.Names}}\t{{.ID}}" 2>/dev/null | while IFS=$'\t' read -r cname cid; do
+        log_size=$(docker inspect --format='{{.LogPath}}' "$cid" 2>/dev/null)
+        if [ -n "$log_size" ] && [ -f "$log_size" ]; then
+            size_h=$(du -h "$log_size" 2>/dev/null | awk '{print $1}')
+            echo "${size_h:-0}	$cname	$cid"
+        fi
+    done | sort -rh | head -10 | while IFS=$'\t' read -r size name id; do
+        printf "| %s | %s | %s |\n" "$size" "$name" "$id"
+    done
+    echo ""
+
+    # --- 10.8 清理建议汇总（仅建议，不执行）---
+    echo "### 10.8 清理建议（仅供参考）"
+    echo ""
+    echo "> ⚠️ **安全提示:** 以下命令仅为建议，本脚本**不会自动执行任何删除/清理操作**。"
+    echo "> 请运维人员根据实际情况评估后手动执行，执行前务必确认目标环境。"
+    echo ""
+    echo "| 操作 | 命令 | 风险等级 | 说明 |"
+    echo "|------|------|----------|------|"
+    echo "| 清理悬空镜像 | \`docker image prune\` | 🟢 低 | 删除所有 \<none\> 标签的悬空镜像 |"
+    echo "| 清理未用镜像 | \`docker image prune -a\` | 🟡 中 | 删除所有未被容器引用的镜像（**谨慎**） |"
+    echo "| 清理停止的容器 | \`docker container prune\` | 🟢 低 | 删除所有已停止的容器 |"
+    echo "| 清理孤立卷 | \`docker volume prune\` | 🟡 中 | 删除未被任何容器挂载的卷（**谨慎，可能丢数据**） |"
+    echo "| 清理构建缓存 | \`docker builder prune\` | 🟢 低 | 删除 BuildKit 构建缓存 |"
+    echo "| 一键清理全部 | \`docker system prune -a --volumes\` | 🔴 高 | 清理所有未使用资源（**高危，务必确认后执行**） |"
+    echo "| 截断大日志文件 | \`truncate -s 0 /path/to/log\` | 🟢 低 | 清空指定容器日志而不删除文件 |"
+    echo ""
+fi
+
+# ==============================================================================
+# 11. 实时 I/O 负载快照（默认关闭）
 # ==============================================================================
 # 通过 ENABLE_REALTIME_IO 变量控制是否执行
 # Linux: 读取两次 /proc/diskstats，间隔 2 秒，计算瞬时速率
 # macOS: 无 /proc/diskstats，暂不支持
 if [ "$ENABLE_REALTIME_IO" = "true" ]; then
-    echo "## 10. 实时 I/O 负载快照"
+    echo "## 11. 实时 I/O 负载快照"
     echo ""
     if [ "$OS_TYPE" = "Darwin" ]; then
         echo "> ℹ️ macOS 暂无 /proc/diskstats 等价物，实时 I/O 快照暂不支持。"
@@ -579,7 +806,8 @@ echo "1. 是否有挂载点使用率超过 85% 或 inode 使用率超过 80%"
 echo "2. I/O await 是否超过 20ms，%util 是否接近 100%"
 echo "3. 哪些目录或文件是空间占用大户，是否可以清理"
 echo "4. SMART 状态是否正常，是否有坏扇区预警"
-echo "5. 给出具体的清理命令或扩容建议"
+echo "5. Docker 空间占用是否合理，是否有大量悬空镜像、孤立卷或膨胀日志"
+echo "6. 给出具体的清理命令或扩容建议"
 echo '```'
 echo ""
 echo "> 📄 **报告已保存至:** \`$REPORT_PATH\`"
