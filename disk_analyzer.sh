@@ -5,7 +5,7 @@
 #             默认跳过实时 I/O 负载快照，输出标准 Markdown 报告文件
 # 适用系统: Linux (CentOS/Ubuntu/Debian/RHEL)
 # 依赖工具: sysstat(iostat), smartmontools(smartctl), bc, lsblk, find, du
-# 安装依赖: 
+# 安装依赖:
 #   CentOS: yum install -y sysstat smartmontools bc
 #   Ubuntu: apt install -y sysstat smartmontools bc
 # 使用方法: chmod +x disk_analyzer.sh && ./disk_analyzer.sh
@@ -40,10 +40,52 @@ ENABLE_REALTIME_IO="false"
 
 # 颜色开关：输出到 Markdown 文件时无需颜色，终端预览时可开启
 # 本脚本默认关闭颜色，保证 Markdown 纯净
+# shellcheck disable=SC2034
 COLOR_OUTPUT="false"
 
 # 检测操作系统
 OS_TYPE=$(uname -s)
+
+# ==============================================================================
+# 按系统选择命令 / 工具探测
+# 集中定义平台相关命令，后续统一引用，避免散落的裸调用跨平台失效
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 跨平台超时封装 run_with_timeout <秒> <命令...>
+# GNU timeout 优先；macOS 装了 coreutils 则有 gtimeout；都没有则用后台进程+kill 自实现
+# ------------------------------------------------------------------------------
+if command -v timeout >/dev/null 2>&1; then
+    run_with_timeout() { timeout "$@"; }
+elif command -v gtimeout >/dev/null 2>&1; then
+    run_with_timeout() { gtimeout "$@"; }
+else
+    run_with_timeout() {
+        local secs="$1"; shift
+        "$@" &
+        local pid=$!
+        local waited=0
+        while kill -0 "$pid" 2>/dev/null; do
+            sleep 1
+            waited=$((waited + 1))
+            if [ "$waited" -ge "$secs" ]; then
+                kill "$pid" 2>/dev/null
+                wait "$pid" 2>/dev/null
+                return 124
+            fi
+        done
+        wait "$pid" 2>/dev/null
+    }
+fi
+if [ "$OS_TYPE" = "Darwin" ]; then
+    # --- macOS: diskutil / df / mount / du ---
+    : # macOS 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
+elif [ "$OS_TYPE" = "Linux" ]; then
+    # --- Linux: lsblk / blkid / df / smartctl / iostat ---
+    : # Linux 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
+else
+    echo "> ⚠️ 当前系统 ($OS_TYPE) 不是受支持的 Linux/macOS，部分功能可能不可用。" >&3
+fi
 
 # 使用临时文件收集报告，避免进程替换的异步/交错问题
 TMP_REPORT=$(mktemp)
@@ -53,6 +95,17 @@ exec 3>&1
 
 # 将后续所有输出重定向到临时 Markdown 文件
 exec > "$TMP_REPORT"
+
+# ------------------------------------------------------------------------------
+# 实时进度提示：打印到 fd3（终端），不进入报告文件
+# ------------------------------------------------------------------------------
+progress() {
+    # $1=当前章节序号 $2=总章节数 $3=章节名
+    printf '\r\033[K🔄 [%s/%s] %s ...\n' "$1" "$2" "$3" >&3
+}
+
+# 启动横幅（实时打印到终端，不进报告文件）
+printf '\n\033[1;32m🚀 磁盘 分析开始\033[0m (共 10 个章节，执行期间会逐章显示进度)\n' >&3
 
 # ==============================================================================
 # Markdown 报告头
@@ -76,6 +129,7 @@ echo ""
 # ==============================================================================
 # 1. 磁盘基础信息
 # ==============================================================================
+progress 1 10 "磁盘基础信息"
 echo "## 1. 磁盘基础信息"
 echo ""
 
@@ -151,6 +205,7 @@ fi
 # ==============================================================================
 # 2. 磁盘空间使用情况
 # ==============================================================================
+progress 2 10 "磁盘空间使用情况"
 echo "## 2. 磁盘空间使用情况"
 echo ""
 echo "> **评估标准:** 使用率 < 80% 健康，80%~90% 警告，> 90% 危险"
@@ -187,6 +242,7 @@ echo ""
 # ==============================================================================
 # 3. inode 使用情况（关键！小文件过多会导致 inode 耗尽）
 # ==============================================================================
+progress 3 10 "inode 使用情况"
 echo "## 3. inode 使用情况"
 echo ""
 echo "> **评估标准:** inode 使用率 < 70% 健康，70%~90% 警告，> 90% 危险"
@@ -198,6 +254,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS df -i 格式: Filesystem 512-blocks Used Available Capacity iused ifree %iused Mounted on
     # 第1列=FS, 第6列=iused, 第7列=ifree, 第8列=%iused, 第9列=Mounted on
     # 总量近似为 iused + ifree
+    # shellcheck disable=SC2034
     df -i 2>/dev/null | grep -E '^/dev/' | while read -r fs blocks used avail capacity iused ifree ipct mount; do
         use_num=$(echo "$ipct" | sed 's/%//')
         if [ "$use_num" -ge 90 ]; then status="🔴 危险"
@@ -223,6 +280,7 @@ echo ""
 # ==============================================================================
 # 4. 磁盘 I/O 性能采样
 # ==============================================================================
+progress 4 10 "磁盘 I/O 性能采样"
 echo "## 4. 磁盘 I/O 性能采样"
 echo ""
 # 检查 iostat 是否可用
@@ -313,6 +371,7 @@ fi
 # ==============================================================================
 # 5. 大文件与目录扫描（定位空间占用大户）
 # ==============================================================================
+progress 5 10 "空间占用大户扫描"
 echo "## 5. 空间占用大户扫描"
 echo ""
 # 扫描各挂载点下占用空间最大的前 10 个目录
@@ -337,13 +396,9 @@ for mount in $(df 2>/dev/null | grep -E '^/dev/' | awk -v col="$MOUNT_COLUMN" '{
     echo "| 大小 | 目录 |"
     echo "|------|------|"
     # du -k 输出 KB 数值，sort -rn 兼容所有 POSIX sort，再由 hr_kb 转换显示
-    # 2>/dev/null 忽略无权限目录的错误；timeout 避免根目录扫描耗时过长
+    # 2>/dev/null 忽略无权限目录的错误；run_with_timeout 避免挂载点扫描耗时过长
     du_output=""
-    if command -v timeout >/dev/null 2>&1; then
-        du_output=$(timeout 20 du -k $DU_DEPTH "$mount" 2>/dev/null | sort -rn | head -11 | tail -10)
-    else
-        du_output=$(du -k $DU_DEPTH "$mount" 2>/dev/null | sort -rn | head -11 | tail -10)
-    fi
+    du_output=$(run_with_timeout 20 du -k $DU_DEPTH "$mount" 2>/dev/null | sort -rn | head -11 | tail -10)
     if [ -n "$du_output" ]; then
         echo "$du_output" | while read -r size_kb path; do
             echo "| $(hr_kb "$size_kb") | $path |"
@@ -360,12 +415,10 @@ echo "### 大于 1GB 的文件 Top20"
 echo ""
 echo "| 大小 | 文件路径 |"
 echo "|------|----------|"
-if command -v timeout >/dev/null 2>&1; then
-    FIND_CMD="timeout $LARGE_FILE_SCAN_TIMEOUT find / -maxdepth 6"
-else
-    FIND_CMD="find / -maxdepth 6"
-fi
-$FIND_CMD -type f -size +1G -not -path "/proc/*" -not -path "/sys/*" -not -path "/dev/*" -not -path "/run/*" 2>/dev/null | while read -r file; do
+# run_with_timeout 已按系统自动选择 timeout/gtimeout/自实现，macOS 也能安全限时
+run_with_timeout "$LARGE_FILE_SCAN_TIMEOUT" find / -maxdepth 6 -type f -size +1G \
+    -not -path "/proc/*" -not -path "/sys/*" -not -path "/dev/*" -not -path "/run/*" \
+    2>/dev/null | while read -r file; do
     du -k "$file" 2>/dev/null
 done | sort -rn | head -20 | while read -r size_kb path; do
     echo "| $(hr_kb "$size_kb") | $path |"
@@ -375,6 +428,7 @@ echo ""
 # ==============================================================================
 # 6. 日志文件专项扫描（日志膨胀是磁盘满的元凶之一）
 # ==============================================================================
+progress 6 10 "日志文件专项扫描"
 echo "## 6. 日志文件专项扫描"
 echo ""
 echo "### 大于 100MB 的日志文件"
@@ -396,6 +450,7 @@ echo ""
 # ==============================================================================
 # 7. LVM 逻辑卷信息（如果使用 LVM）
 # ==============================================================================
+progress 7 10 "LVM 逻辑卷信息"
 echo "## 7. LVM 逻辑卷信息"
 echo ""
 if command -v lvs &> /dev/null && command -v vgs &> /dev/null; then
@@ -430,6 +485,7 @@ fi
 # ==============================================================================
 # 8. 磁盘健康状态 (SMART)
 # ==============================================================================
+progress 8 10 "磁盘健康状态 (SMART)"
 echo "## 8. 磁盘健康状态 (SMART)"
 echo ""
 if ! command -v smartctl &> /dev/null; then
@@ -479,6 +535,7 @@ fi
 # ==============================================================================
 # 9. 挂载参数与文件系统特性
 # ==============================================================================
+progress 9 10 "挂载参数与文件系统特性"
 echo "## 9. 挂载参数与文件系统特性"
 echo ""
 echo "| 设备 | 挂载点 | 类型 | 参数 |"
@@ -518,6 +575,7 @@ echo ""
 # ==============================================================================
 # 10. Docker 空间占用专项扫描
 # ==============================================================================
+progress 10 10 "Docker 空间占用专项扫描"
 echo "## 10. Docker 空间占用专项扫描"
 echo ""
 if ! command -v docker &> /dev/null; then
@@ -547,9 +605,13 @@ else
         echo ""
         echo "| 子目录 | 大小 |"
         echo "--------|------|"
-        du -sh "$DOCKER_DATA_DIR"/*/ 2>/dev/null | sort -rh | while read -r size path; do
+        for sub in "$DOCKER_DATA_DIR"/*/; do
+            [ -d "$sub" ] || continue
+            size_kb=$(du -sk "$sub" 2>/dev/null | awk '{print $1}')
+            echo "${size_kb:-0}	$sub"
+        done | sort -rn | while IFS=$'\t' read -r size_kb path; do
             dir_name=$(basename "$path")
-            printf "| %s | %s |\n" "$dir_name" "$size"
+            printf "| %s | %s |\n" "$dir_name" "$(hr_kb "$size_kb")"
         done
     else
         # 尝试通过 docker info 获取 Docker Root Dir
@@ -560,9 +622,13 @@ else
             echo ""
             echo "| 子目录 | 大小 |"
             echo "|--------|------|"
-            du -sh "$DOCKER_ROOT"/*/ 2>/dev/null | sort -rh | while read -r size path; do
+            for sub in "$DOCKER_ROOT"/*/; do
+                [ -d "$sub" ] || continue
+                size_kb=$(du -sk "$sub" 2>/dev/null | awk '{print $1}')
+                echo "${size_kb:-0}	$sub"
+            done | sort -rn | while IFS=$'\t' read -r size_kb path; do
                 dir_name=$(basename "$path")
-                printf "| %s | %s |\n" "$dir_name" "$size"
+                printf "| %s | %s |\n" "$dir_name" "$(hr_kb "$size_kb")"
             done
         else
             echo "> ⚠️ 无法定位 Docker 数据目录（权限不足或非标准路径）"
@@ -623,11 +689,11 @@ else
     docker volume ls -q 2>/dev/null | while read -r vol; do
         mountpoint=$(docker volume inspect --format '{{.Mountpoint}}' "$vol" 2>/dev/null)
         if [ -n "$mountpoint" ] && [ -d "$mountpoint" ]; then
-            vol_size=$(du -sh "$mountpoint" 2>/dev/null | awk '{print $1}')
-            echo "${vol_size:-0}	$vol"
+            vol_size_kb=$(du -sk "$mountpoint" 2>/dev/null | awk '{print $1}')
+            echo "${vol_size_kb:-0}	$vol"
         fi
-    done | sort -rh | head -15 | while IFS=$'\t' read -r size vol; do
-        printf "| %s | %s |\n" "$size" "$vol"
+    done | sort -rn | head -15 | while IFS=$'\t' read -r vol_size_kb vol; do
+        printf "| %s | %s |\n" "$(hr_kb "$vol_size_kb")" "$vol"
     done
     echo ""
 
@@ -714,11 +780,11 @@ else
     docker ps --format "{{.Names}}\t{{.ID}}" 2>/dev/null | while IFS=$'\t' read -r cname cid; do
         log_size=$(docker inspect --format='{{.LogPath}}' "$cid" 2>/dev/null)
         if [ -n "$log_size" ] && [ -f "$log_size" ]; then
-            size_h=$(du -h "$log_size" 2>/dev/null | awk '{print $1}')
-            echo "${size_h:-0}	$cname	$cid"
+            size_kb=$(du -k "$log_size" 2>/dev/null | awk '{print $1}')
+            echo "${size_kb:-0}	$cname	$cid"
         fi
-    done | sort -rh | head -10 | while IFS=$'\t' read -r size name id; do
-        printf "| %s | %s | %s |\n" "$size" "$name" "$id"
+    done | sort -rn | head -10 | while IFS=$'\t' read -r size_kb name id; do
+        printf "| %s | %s | %s |\n" "$(hr_kb "$size_kb")" "$name" "$id"
     done
     echo ""
 
@@ -759,7 +825,7 @@ if [ "$ENABLE_REALTIME_IO" = "true" ]; then
         echo "|------|-----------|-----------|"
 
         # 第一次采样
-        cat /proc/diskstats 2>/dev/null | grep -E 'sd[a-z]|nvme|xvd[a-z]' | while read -r line; do
+        cat /proc/diskstats 2>/dev/null | awk '$3 ~ /^[a-z]/ {print}' | while read -r line; do
             dev=$(echo "$line" | awk '{print $3}')
             read1=$(echo "$line" | awk '{print $6}')
             write1=$(echo "$line" | awk '{print $10}')
@@ -769,7 +835,7 @@ if [ "$ENABLE_REALTIME_IO" = "true" ]; then
         sleep 2
 
         # 第二次采样并计算差值
-        cat /proc/diskstats 2>/dev/null | grep -E 'sd[a-z]|nvme|xvd[a-z]' | while read -r line; do
+        cat /proc/diskstats 2>/dev/null | awk '$3 ~ /^[a-z]/ {print}' | while read -r line; do
             dev=$(echo "$line" | awk '{print $3}')
             read2=$(echo "$line" | awk '{print $6}')
             write2=$(echo "$line" | awk '{print $10}')
@@ -821,6 +887,9 @@ exec 1>&3
 exec 3>&-
 cat "$TMP_REPORT" | tee "$REPORT_PATH"
 rm -f "$TMP_REPORT"
+
+# 完成提示（实时打印到终端）
+printf '\033[1;32m✅ 分析完成\033[0m 报告已保存至: %s\n' "$REPORT_PATH" >&3
 
 echo ""
 echo "✅ 磁盘分析报告已生成: $REPORT_PATH"

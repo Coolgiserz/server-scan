@@ -19,6 +19,20 @@ SAMPLE_COUNT=3
 # 检测操作系统
 OS_TYPE=$(uname -s)
 
+# ==============================================================================
+# 按系统选择命令 / 工具探测
+# 集中定义平台相关命令，后续统一引用，避免散落的裸调用跨平台失效
+# ==============================================================================
+if [ "$OS_TYPE" = "Darwin" ]; then
+    # --- macOS: 使用 sysctl / vm_stat / top -l / ps ---
+    : # macOS 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
+elif [ "$OS_TYPE" = "Linux" ]; then
+    # --- Linux: 使用 /proc、top -bn1、mpstat(可选) ---
+    : # Linux 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
+else
+    echo "> ⚠️ 当前系统 ($OS_TYPE) 不是受支持的 Linux/macOS，部分功能可能不可用。" >&3
+fi
+
 # 使用临时文件收集报告，避免进程替换的异步/交错问题
 TMP_REPORT=$(mktemp)
 
@@ -27,6 +41,17 @@ exec 3>&1
 
 # 将后续所有输出重定向到临时 Markdown 文件
 exec > "$TMP_REPORT"
+
+# 启动横幅（实时打印到终端，不进报告文件）
+printf '\n\033[1;32m🚀 CPU/内存 分析开始\033[0m (共 12 个章节，执行期间会逐章显示进度)\n' >&3
+
+# ------------------------------------------------------------------------------
+# 实时进度提示：打印到 fd3（终端），不进入报告文件
+# ------------------------------------------------------------------------------
+progress() {
+    # $1=当前章节序号 $2=总章节数 $3=章节名
+    printf '\r\033[K🔄 [%s/%s] %s ...\n' "$1" "$2" "$3" >&3
+}
 
 # ==============================================================================
 # 通用辅助函数
@@ -92,6 +117,7 @@ echo ""
 # 1. CPU 基础信息
 # ==============================================================================
 
+progress 1 12 "CPU 基础信息"
 echo "## 1. CPU 基础信息"
 echo ""
 
@@ -142,7 +168,12 @@ else
     echo "| CPU 型号 | ${model:-N/A} |"
     echo "| 物理核心数 | ${phy_cores:-N/A} |"
     echo "| 逻辑核心数 (含超线程) | ${logic_cores:-N/A} |"
-    echo "| 每核心线程数 | ${siblings:-N/A} |"
+    if [ -n "$phy_cores" ] && [ "$phy_cores" -gt 0 ] && [ -n "$siblings" ]; then
+        threads_per_core=$((siblings / phy_cores))
+    else
+        threads_per_core="N/A"
+    fi
+    echo "| 每核心线程数 | ${threads_per_core} |"
     echo "| 缓存大小 | ${cache:-N/A} |"
     echo "| 关键特性 | ${flags:-N/A} |"
 
@@ -162,6 +193,7 @@ fi
 # 2. CPU 负载与使用率
 # ==============================================================================
 
+progress 2 12 "CPU 负载与使用率"
 echo "## 2. CPU 负载与使用率"
 echo ""
 
@@ -214,7 +246,8 @@ else
     CORES=$logic_cores
 fi
 
-if command -v bc &> /dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ]; then
+if command -v bc &> /dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] && \
+   [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
     threshold_busy=$(echo "$CORES * 1.0" | bc -l)
     threshold_danger=$(echo "$CORES * 2.0" | bc -l)
     if (( $(echo "$load1 > $threshold_danger" | bc -l) )); then
@@ -275,6 +308,7 @@ fi
 # ==============================================================================
 
 if [ "$OS_TYPE" != "Darwin" ] && [ "$ENABLE_MPSTAT" = "true" ] && command -v mpstat &> /dev/null; then
+    progress 3 12 "多核 CPU 详细采样 (mpstat)"
     echo "## 3. 多核 CPU 详细采样 (mpstat)"
     echo ""
     echo "> **说明:** 采样 ${SAMPLE_COUNT} 次，每次间隔 ${SAMPLE_INTERVAL} 秒，取平均值"
@@ -282,13 +316,13 @@ if [ "$OS_TYPE" != "Darwin" ] && [ "$ENABLE_MPSTAT" = "true" ] && command -v mps
     echo "| CPU | usr% | sys% | iowait% | idle% | 评估 |"
     echo "|-----|------|------|---------|-------|------|"
 
-    mpstat -P ALL $SAMPLE_INTERVAL $SAMPLE_COUNT 2>/dev/null | tail -n +4 | awk '
+    mpstat -P ALL $SAMPLE_INTERVAL $SAMPLE_COUNT 2>/dev/null | awk '
         /^Average:/ {
             cpu = $2
-            usr = $3
-            sys = $4
-            iowait = $6
-            idle = $12
+            usr = $3 + 0
+            sys = $4 + 0
+            iowait = $6 + 0
+            idle = $12 + 0
 
             eval = ""
             if (iowait > 20) eval = "🔴 IO瓶颈"
@@ -307,6 +341,7 @@ fi
 # 4. 内存总体概况
 # ==============================================================================
 
+progress 4 12 "内存总体概况"
 echo "## 4. 内存总体概况"
 echo ""
 echo "> **评估标准:** available < 总内存 10% 为危险；Swap 使用 > 0 说明曾发生内存交换"
@@ -335,6 +370,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     pages_free=$(parse_vm_stat "Pages free")
     pages_active=$(parse_vm_stat "Pages active")
     pages_inactive=$(parse_vm_stat "Pages inactive")
+    # shellcheck disable=SC2034
     pages_speculative=$(parse_vm_stat "Pages speculative")
     pages_wired=$(parse_vm_stat "Pages wired down")
     pages_compressed=$(parse_vm_stat "Pages occupied by compressor")
@@ -361,8 +397,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     fi
 
     avail_num=$(echo "$avail_pct" | awk '{printf "%d", $1}')
-    if [ "$avail_num" -lt 5 ]; then mem_status="🔴 严重不足"
-    elif [ "$avail_num" -lt 10 ]; then mem_status="🟡 紧张"
+    if [ "$avail_num" -lt 10 ]; then mem_status="🔴 严重不足"
     else mem_status="🟢 充足"
     fi
 
@@ -421,6 +456,7 @@ fi
 # 5. Swap 使用情况
 # ==============================================================================
 
+progress 5 12 "Swap 使用情况"
 echo "## 5. Swap 使用情况"
 echo ""
 
@@ -482,6 +518,7 @@ fi
 # 6. 内存压力与 OOM 风险 (Linux 详细 / macOS 简化)
 # ==============================================================================
 
+progress 6 12 "内存压力与 OOM 风险"
 echo "## 6. 内存压力与 OOM 风险"
 echo ""
 
@@ -559,17 +596,24 @@ else
     echo "| Committed_AS | $mem_commit | 系统承诺分配的虚拟内存总量 |"
     echo ""
 
-    # OOM 风险评估
-    oom_score_adj=$(cat /proc/sys/vm/overcommit_memory 2>/dev/null || echo "N/A")
-    ratio=$(cat /proc/sys/vm/overcommit_ratio 2>/dev/null || echo "N/A")
+    # OOM 风险评估（仅 Linux 提供 /proc/sys/vm/overcommit_*）
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        echo "### OOM 风险评估"
+        echo ""
+        echo "> ℹ️ macOS 采用不同内存管理模型，无 Linux overcommit 机制，本节跳过。"
+        echo ""
+    else
+        oom_score_adj=$(cat /proc/sys/vm/overcommit_memory 2>/dev/null || echo "N/A")
+        ratio=$(cat /proc/sys/vm/overcommit_ratio 2>/dev/null || echo "N/A")
 
-    echo "### OOM 风险评估"
-    echo ""
-    echo "| 指标 | 数值 | 说明 |"
-    echo "|------|------|------|"
-    echo "| overcommit_memory | $oom_score_adj | 0=启发式 1=始终允许 2=严格限制 |"
-    echo "| overcommit_ratio | $ratio% | 可超量提交的百分比 |"
-    echo ""
+        echo "### OOM 风险评估"
+        echo ""
+        echo "| 指标 | 数值 | 说明 |"
+        echo "|------|------|------|"
+        echo "| overcommit_memory | $oom_score_adj | 0=启发式 1=始终允许 2=严格限制 |"
+        echo "| overcommit_ratio | $ratio% | 可超量提交的百分比 |"
+        echo ""
+    fi
 
     if [ "$oom_score_adj" = "2" ]; then
         echo "> ℹ️ 当前为严格内存限制模式 (overcommit_memory=2)，内存分配失败率较高"
@@ -587,6 +631,7 @@ fi
 # 7. 进程状态分布
 # ==============================================================================
 
+progress 7 12 "进程状态分布"
 echo "## 7. 进程状态分布"
 echo ""
 echo "> **关键指标:** D 状态进程多 = 磁盘 IO 瓶颈；Z 状态进程 > 0 = 应用 Bug"
@@ -681,6 +726,7 @@ fi
 # 8. 上下文切换与中断统计 (Linux 原生 / macOS 近似)
 # ==============================================================================
 
+progress 8 12 "上下文切换与中断统计"
 echo "## 8. 上下文切换与中断统计"
 echo ""
 
@@ -727,6 +773,7 @@ fi
 # 9. Top 资源消耗进程
 # ==============================================================================
 
+progress 9 12 "Top 资源消耗进程"
 echo "## 9. Top 资源消耗进程"
 echo ""
 
@@ -739,12 +786,12 @@ echo "|-----|------|------|------|----------|----------|------|------|"
 if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS ps aux 格式: USER PID %CPU %MEM VSZ RSS TT STAT STARTED TIME COMMAND
     ps aux -r 2>/dev/null | head -11 | tail -10 | awk '{
-        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n", 
+        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
         $2, $1, $3, $4, $5, $6, $8, $11
     }'
 else
     ps aux --sort=-%cpu 2>/dev/null | head -11 | tail -10 | awk '{
-        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n", 
+        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
         $2, $1, $3, $4, $5, $6, $8, $11
     }'
 fi
@@ -758,12 +805,12 @@ echo "|-----|------|------|------|----------|----------|------|------|"
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     ps aux -m 2>/dev/null | head -11 | tail -10 | awk '{
-        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n", 
+        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
         $2, $1, $3, $4, $5, $6, $8, $11
     }'
 else
     ps aux --sort=-%mem 2>/dev/null | head -11 | tail -10 | awk '{
-        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n", 
+        printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
         $2, $1, $3, $4, $5, $6, $8, $11
     }'
 fi
@@ -773,6 +820,7 @@ echo ""
 # 10. 系统句柄与限制
 # ==============================================================================
 
+progress 10 12 "系统句柄与限制"
 echo "## 10. 系统句柄与限制"
 echo ""
 
@@ -784,8 +832,9 @@ if [ "$OS_TYPE" = "Darwin" ]; then
 
     if [ "$KERN_MAXFILES" != "N/A" ] && [ "$KERN_MAXFILES" -gt 0 ]; then
         file_pct=$(awk "BEGIN {printf \"%.2f\", $KERN_FILES/$KERN_MAXFILES*100}")
-        if [ "${file_pct%.*}" -gt 90 ]; then file_status="🔴 危险"
-        elif [ "${file_pct%.*}" -gt 80 ]; then file_status="🟡 偏高"
+        pct_int=${file_pct%.*}
+        if [ "$pct_int" -gt 90 ]; then file_status="🔴 危险"
+        elif [ "$pct_int" -gt 80 ]; then file_status="🟡 偏高"
         else file_status="🟢 正常"
         fi
     else
@@ -835,7 +884,8 @@ else
     echo ""
     echo "| PID | 用户 | 句柄数 | 命令 |"
     echo "|-----|------|--------|------|"
-    for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$' | sort -n); do
+    for pid in /proc/[0-9]*; do
+        pid="${pid#/proc/}"
         if [ -d "/proc/$pid/fd" ]; then
             count=$(ls /proc/$pid/fd 2>/dev/null | wc -l)
             cmd=$(cat /proc/$pid/comm 2>/dev/null | tr '\n' ' ')
@@ -853,6 +903,7 @@ fi
 # ==============================================================================
 
 if [ "$OS_TYPE" != "Darwin" ]; then
+    progress 11 12 "内核内存 (Slab) 详情"
     echo "## 11. 内核内存 (Slab) 详情"
     echo ""
 
@@ -881,6 +932,7 @@ fi
 # 12. 负载趋势分析
 # ==============================================================================
 
+progress 12 12 "负载趋势分析"
 echo "## 12. 负载趋势分析"
 echo ""
 
@@ -900,10 +952,11 @@ echo ""
 
 echo "| 时间窗口 | 负载值 | 与核心数比值 |"
 echo "|----------|--------|--------------|"
-if command -v bc &> /dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ]; then
-    ratio1=$(printf "%.2f" $(echo "scale=2; $load1 / $CORES" | bc -l))
-    ratio5=$(printf "%.2f" $(echo "scale=2; $load5 / $CORES" | bc -l))
-    ratio15=$(printf "%.2f" $(echo "scale=2; $load15 / $CORES" | bc -l))
+if command -v bc &> /dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] && \
+   [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
+    ratio1=$(printf "%.2f" "$(echo "scale=2; $load1 / $CORES" | bc -l)")
+    ratio5=$(printf "%.2f" "$(echo "scale=2; $load5 / $CORES" | bc -l)")
+    ratio15=$(printf "%.2f" "$(echo "scale=2; $load15 / $CORES" | bc -l)")
     echo "| 1分钟 | $load1 | ${ratio1} |"
     echo "| 5分钟 | $load5 | ${ratio5} |"
     echo "| 15分钟 | $load15 | ${ratio15} |"
@@ -945,6 +998,9 @@ exec 1>&3
 exec 3>&-
 cat "$TMP_REPORT" | tee "$REPORT_PATH"
 rm -f "$TMP_REPORT"
+
+# 完成提示（实时打印到终端）
+printf '\033[1;32m✅ 分析完成\033[0m 报告已保存至: %s\n' "$REPORT_PATH" >&3
 
 echo ""
 echo "✅ CPU/内存 深度分析报告已生成: $REPORT_PATH"
