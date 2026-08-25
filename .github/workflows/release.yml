@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    # 跳过版本标签本身的推送，避免无限循环
+    if: "!startsWith(github.event.head_commit.message, 'chore(release)')"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate version tag
+        id: version
+        run: |
+          # 基于日期和提交数生成版本号: vYYYY.MM.DD-N
+          DATE=$(date -u +"%Y.%-m.%-d")
+          # 获取今天的提交数作为补丁号
+          TODAY_COMMITS=$(git log --oneline --since="midnight" | wc -l | tr -d ' ')
+          # 如果今天没有提交，用总提交数
+          if [ "$TODAY_COMMITS" -eq 0 ]; then
+            TODAY_COMMITS=$(git rev-list --count HEAD)
+          fi
+          VERSION="v${DATE}.${TODAY_COMMITS}"
+
+          # 检查标签是否已存在，存在则递增补丁号
+          while git rev-parse "$VERSION" >/dev/null 2>&1; do
+            TODAY_COMMITS=$((TODAY_COMMITS + 1))
+            VERSION="v${DATE}.${TODAY_COMMITS}"
+          done
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Generated version: $VERSION"
+
+      - name: Create release archive
+        run: |
+          # 打包所有脚本和库文件
+          tar czf server-scan-${{ steps.version.outputs.version }}.tar.gz \
+            --transform 's,^,server-scan/,' \
+            server-scan \
+            sys_overview.sh \
+            cpu_mem_analyzer.sh \
+            disk_analyzer.sh \
+            network_analyzer.sh \
+            lib/ \
+            README.md \
+            disk_analyzer.conf.example
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # 获取上一个标签到现在的提交日志
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s (%h)")
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)")
+          fi
+
+          {
+            echo "## What's Changed"
+            echo ""
+            echo "$COMMITS"
+            echo ""
+            echo "## Installation"
+            echo ""
+            echo '```bash'
+            echo "# 下载并解压"
+            echo "tar xzf server-scan-${{ steps.version.outputs.version }}.tar.gz"
+            echo "cd server-scan"
+            echo ""
+            echo "# 赋予执行权限"
+            echo "chmod +x server-scan *.sh"
+            echo ""
+            echo "# 运行"
+            echo "./server-scan --help"
+            echo '```'
+          } > release_notes.md
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.version }}" -m "Release ${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: server-scan ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          files: server-scan-${{ steps.version.outputs.version }}.tar.gz
+          generate_release_notes: false
