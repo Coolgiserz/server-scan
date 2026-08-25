@@ -2,8 +2,16 @@
 # disk_analyzer.sh 配置文件
 # ==============================================================================
 # 此配置文件用于自定义 disk_analyzer.sh 的默认行为
-# 配置文件路径: 当前目录下的 disk_analyzer.conf
-# 也可以通过环境变量 CONFIG_FILE 指定其他路径
+#
+# 配置文件路径:
+#   - 默认: 当前目录下的 disk_analyzer.conf
+#   - 命令行: ./server-scan disk -c /path/to/config.conf
+#   - 环境变量: CONFIG_FILE=/path/to/config.conf
+#
+# 使用示例:
+#   ./server-scan disk                          # 使用默认配置
+#   ./server-scan disk -c my.conf               # 使用指定配置文件
+#   ./server-scan disk -d /var/log --depth 5    # 命令行参数优先
 # ==============================================================================
 
 # ------------------------------------------------------------------------------

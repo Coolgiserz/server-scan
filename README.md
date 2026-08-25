@@ -2,28 +2,120 @@
 
 服务器性能诊断工具集，自动生成标准 Markdown 分析报告。
 
+支持两种使用方式：
+- **统一入口** `server-scan`：子命令风格，适合 Agent 调用
+- **独立脚本**：直接执行各 `.sh` 脚本
+
 ## 工具列表
 
-| 脚本 | 功能 | 适用场景 |
-|------|------|----------|
-| `cpu_mem_analyzer.sh` | CPU / 内存深度分析 | 排查负载高、内存不足、OOM 风险 |
-| `disk_analyzer.sh` | 磁盘空间 / IO / 健康分析 | 排查磁盘满、IO 瓶颈、SMART 预警 |
+| 脚本 | 子命令 | 功能 | 适用场景 |
+|------|--------|------|----------|
+| `sys_overview.sh` | `overview` | 系统瓶颈总览 | 快速扫描 CPU / 内存 / 磁盘 / 网络 |
+| `cpu_mem_analyzer.sh` | `cpu-mem` | CPU / 内存深度分析 | 排查负载高、内存不足、OOM 风险 |
+| `disk_analyzer.sh` | `disk` | 磁盘空间 / IO / 健康分析 | 排查磁盘满、IO 瓶颈、SMART 预警 |
+| `network_analyzer.sh` | `network` | 网络专项排查 | 接口、连通性、连接数、DNS |
 
 ## 快速开始
 
+### 使用统一入口
+
 ```bash
 # 赋予执行权限
-chmod +x cpu_mem_analyzer.sh disk_analyzer.sh
+chmod +x server-scan sys_overview.sh cpu_mem_analyzer.sh disk_analyzer.sh network_analyzer.sh
 
-# 运行分析
-./cpu_mem_analyzer.sh   # 输出到 /tmp/cpu_mem_report.md
-./disk_analyzer.sh      # 输出到 /tmp/disk_report.md
+# 查看帮助
+./server-scan --help
+
+# 运行系统瓶颈总览
+./server-scan overview
+
+# 磁盘专项分析
+./server-scan disk
 
 # 指定目录扫描（只扫描指定目录，跳过全盘扫描）
-./disk_analyzer.sh -d /var/log
-./disk_analyzer.sh -d /var/log -d /home/user
-./disk_analyzer.sh -d "/var/log /home/user" --depth 5 --top 30
+./server-scan disk -d /var/log
+./server-scan disk -d /var/log -d /home/user
+./server-scan disk -d "/var/log /home/user" --depth 5 --top 30
+
+# 运行所有诊断
+./server-scan all
 ```
+
+### 直接执行脚本
+
+```bash
+./sys_overview.sh
+./cpu_mem_analyzer.sh
+./disk_analyzer.sh
+./network_analyzer.sh
+```
+
+## 公共 CLI 选项
+
+所有脚本支持以下公共选项：
+
+| 选项 | 说明 |
+|------|------|
+| `-o, --output PATH` | 报告输出路径（覆盖默认路径） |
+| `-c, --config FILE` | 指定配置文件（覆盖默认配置文件查找） |
+| `-q, --quiet` | 静默模式（只输出报告路径一行，供 Agent 解析） |
+| `--json` | 在 stdout 输出一行 JSON 元数据（供 Agent 程序化消费） |
+| `--no-color` | 禁用 ANSI 颜色（Agent 调用时必需） |
+| `-h, --help` | 显示帮助信息 |
+
+### 脚本特定选项
+
+**disk_analyzer.sh:**
+| 选项 | 说明 |
+|------|------|
+| `-d, --dir DIR` | 指定扫描目录（可多次指定或使用空格分隔多个目录） |
+| `--depth N` | 子目录扫描深度（默认: 3） |
+| `--top N` | 显示 Top N 结果（默认: 20） |
+
+**network_analyzer.sh:**
+| 选项 | 说明 |
+|------|------|
+| `--ping-targets "IP1 IP2"` | 连通性探测目标（默认: 8.8.8.8 1.1.1.1） |
+| `--dns-targets "D1 D2"` | DNS 解析测试域名（默认: www.baidu.com www.google.com） |
+
+**cpu_mem_analyzer.sh:**
+| 选项 | 说明 |
+|------|------|
+| `--no-mpstat` | 禁用多核采样（Linux 下有效） |
+| `--interval N` | 采样间隔（秒，默认: 1） |
+| `--count N` | 采样次数（默认: 3） |
+
+## Agent 集成
+
+### 静默模式
+
+```bash
+# 静默模式：只输出报告路径一行
+./server-scan overview --quiet
+# 输出: /tmp/sys_overview_20240101_120000.md
+
+# JSON 输出：输出结构化元数据
+./server-scan overview --json
+# 输出:
+# {
+#   "status": "success",
+#   "report_path": "/tmp/sys_overview_20240101_120000.md",
+#   "timestamp": "2024-01-01T12:00:00Z",
+#   "hostname": "server01",
+#   "script": "sys_overview.sh",
+#   "duration_sec": 5,
+#   "summary": "",
+#   "bottlenecks": ""
+# }
+```
+
+### 退出码
+
+| 退出码 | 含义 |
+|--------|------|
+| 0 | 成功 |
+| 1 | 发现瓶颈 |
+| 2 | 参数错误 |
 
 ## 系统支持
 
@@ -48,6 +140,11 @@ brew install coreutils smartmontools
 
 ## 报告内容
 
+**系统总览报告** (`sys_overview.sh`)
+- CPU / 内存 / 磁盘 / 网络 快速扫描
+- 综合健康度评分与瓶颈结论
+- 各维度瓶颈清单
+
 **CPU / 内存报告** (`cpu_mem_analyzer.sh`)
 - CPU 基础信息与负载评估
 - CPU 时间分布与多核采样
@@ -64,103 +161,46 @@ brew install coreutils smartmontools
 - LVM 逻辑卷信息
 - SMART 健康状态
 - Docker 空间占用专项扫描
+- 指定目录空间占用分析
+
+**网络报告** (`network_analyzer.sh`)
+- 网络接口状态与流量
+- 连通性测试（可自定义目标）
+- TCP 连接状态统计
+- 端口监听扫描
+- DNS 解析测试
+- 丢包与延迟分析
 
 ## 自定义配置
 
-### 环境变量配置
+### 命令行配置
 
 ```bash
 # 修改报告输出路径
-REPORT_PATH=/var/log/report.md ./cpu_mem_analyzer.sh
+./server-scan overview -o /var/log/report.md
 
-# 开启实时 IO 采样（磁盘脚本）
-ENABLE_REALTIME_IO=true ./disk_analyzer.sh
-
-# 关闭多核采样（CPU 脚本）
-ENABLE_MPSTAT=false ./cpu_mem_analyzer.sh
+# 指定目录扫描
+./server-scan disk -d /var/log --depth 5 --top 30
 ```
 
 ### 配置文件配置
 
-在当前目录创建 `disk_analyzer.conf` 文件，可自定义以下配置：
+在当前目录创建配置文件（如 `disk_analyzer.conf`），可自定义各项阈值：
 
-#### 磁盘使用率阈值
 ```bash
-DISK_USAGE_WARNING_THRESHOLD=80      # 磁盘使用率警告阈值（%）
-DISK_USAGE_CRITICAL_THRESHOLD=90     # 磁盘使用率危险阈值（%）
-```
+# 磁盘使用率阈值
+DISK_USAGE_WARNING_THRESHOLD=80
+DISK_USAGE_CRITICAL_THRESHOLD=90
 
-#### inode 使用率阈值
-```bash
-INODE_USAGE_WARNING_THRESHOLD=70     # inode 使用率警告阈值（%）
-INODE_USAGE_CRITICAL_THRESHOLD=90    # inode 使用率危险阈值（%）
-```
+# I/O 性能阈值
+IO_AWAIT_EXCELLENT_THRESHOLD=10
+IO_AWAIT_GOOD_THRESHOLD=20
+IO_AWAIT_SLOW_THRESHOLD=50
 
-#### I/O 性能阈值
-```bash
-IO_AWAIT_EXCELLENT_THRESHOLD=10      # I/O await 优秀阈值（ms）
-IO_AWAIT_GOOD_THRESHOLD=20           # I/O await 正常阈值（ms）
-IO_AWAIT_SLOW_THRESHOLD=50           # I/O await 缓慢阈值（ms）
-IO_UTIL_HEALTHY_THRESHOLD=60         # I/O %util 健康阈值（%）
-IO_UTIL_BUSY_THRESHOLD=80            # I/O %util 繁忙阈值（%）
-```
-
-#### 大文件扫描配置
-```bash
-LARGE_FILE_SCAN_DEPTH=6              # 大文件扫描深度
-LARGE_FILE_SIZE_THRESHOLD="1G"       # 大文件大小阈值
-LARGE_FILE_SCAN_TIMEOUT=30           # 大文件扫描超时时间（秒）
-LARGE_FILE_TOP=20                    # 大文件 Top N
-```
-
-#### 日志文件扫描配置
-```bash
-LOG_SCAN_DIR="/var/log"              # 日志扫描目录
-LOG_FILE_SIZE_THRESHOLD="100M"       # 日志文件大小阈值
-```
-
-#### Docker 扫描配置
-```bash
+# Docker 扫描配置
 DOCKER_DATA_DIR=""                   # 自定义 Docker 数据目录
-DOCKER_IMAGE_TOP=15                  # Docker 镜像 Top N
-DOCKER_CONTAINER_TOP=10              # Docker 容器 Top N
-DOCKER_VOLUME_TOP=15                 # Docker 卷 Top N
-DOCKER_LOG_SIZE_THRESHOLD="100M"     # Docker 日志文件大小阈值
-DOCKER_BUILD_CACHE_TOP=15            # Docker 构建缓存 Top N
-DOCKER_CONTAINER_LOG_TOP=10          # 运行中容器日志大小 Top N
-```
-
-#### 挂载点扫描配置
-```bash
-MOUNT_SCAN_DEPTH=1                   # 挂载点扫描深度
-MOUNT_SCAN_TOP=10                    # 挂载点扫描 Top N
-MOUNT_SCAN_TIMEOUT=20                # 挂载点扫描超时时间（秒）
-```
-
-#### 指定目录扫描模式配置
-```bash
-SCAN_DEPTH=3                         # 指定目录扫描深度
-SCAN_TOP=20                          # 指定目录扫描 Top N
-```
-
-#### 实时 I/O 配置
-```bash
-ENABLE_REALTIME_IO="false"           # 是否启用实时 I/O 负载快照
-REALTIME_IO_INTERVAL=2               # 实时 I/O 采样间隔（秒）
-```
-
-#### macOS I/O 阈值配置
-```bash
-MACOS_IO_TPS_THRESHOLD=1000          # macOS I/O tps 阈值
-MACOS_IO_MBS_THRESHOLD=100           # macOS I/O MB/s 阈值
-```
-
-#### 报告建议阈值配置
-```bash
-REPORT_DISK_USAGE_WARNING=85         # 报告建议中的磁盘使用率警告阈值（%）
-REPORT_INODE_USAGE_WARNING=80        # 报告建议中的 inode 使用率警告阈值（%）
-REPORT_IO_AWAIT_WARNING=20           # 报告建议中的 I/O await 警告阈值（ms）
-REPORT_IO_UTIL_WARNING=100           # 报告建议中的 I/O %util 警告阈值（%）
+DOCKER_IMAGE_TOP=15
+DOCKER_CONTAINER_TOP=10
 ```
 
 完整示例配置文件请参考 `disk_analyzer.conf.example`。
@@ -169,8 +209,8 @@ REPORT_IO_UTIL_WARNING=100           # 报告建议中的 I/O %util 警告阈值
 
 ```bash
 # 每小时生成一次报告
-0 * * * * /path/to/cpu_mem_analyzer.sh
-0 * * * * /path/to/disk_analyzer.sh
+0 * * * * /path/to/server-scan overview -o /var/log/sys_overview.md
+0 * * * * /path/to/server-scan disk -o /var/log/disk_report.md
 ```
 
 ## 许可证

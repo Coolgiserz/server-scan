@@ -7,82 +7,80 @@
 # Linux 安装: yum/apt install -y sysstat bc
 # macOS 安装: brew install coreutils (可选，提供 numfmt 功能)
 # 使用方法: chmod +x cpu_mem_analyzer.sh && ./cpu_mem_analyzer.sh
-# 输出文件: 默认 /tmp/cpu_mem_report.md（可修改 REPORT_PATH 变量）
+# 输出文件: 默认 /tmp/cpu_mem_report_$(date +%Y%m%d_%H%M%S).md
 # ==============================================================================
 
 # --- 配置区 ---
-REPORT_PATH="/tmp/cpu_mem_report.md"
+REPORT_PATH="/tmp/cpu_mem_report_$(date '+%Y%m%d_%H%M%S').md"
 ENABLE_MPSTAT="true"       # Linux 下有效，macOS 自动忽略
 SAMPLE_INTERVAL=1
 SAMPLE_COUNT=3
 
-# 检测操作系统
-OS_TYPE=$(uname -s)
+# 获取脚本目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 加载共享库
+source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/cli.sh"
+
+# 解析公共参数（必须在主shell中直接调用，不能用命令替换）
+ss::parse_common_args "$@"
+
+# 脚本特定参数解析（解析 SCRIPT_ARGS 中剩余的参数）
+set -- "${SCRIPT_ARGS[@]}"
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--no-mpstat)
+		ENABLE_MPSTAT="false"
+		shift
+		;;
+	--interval)
+		if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+			SAMPLE_INTERVAL="$2"
+			shift 2
+		else
+			ss::log_error "错误: --interval 需要指定数字参数"
+			exit 2
+		fi
+		;;
+	--count)
+		if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+			SAMPLE_COUNT="$2"
+			shift 2
+		else
+			ss::log_error "错误: --count 需要指定数字参数"
+			exit 2
+		fi
+		;;
+	-h | --help)
+		ss::print_usage "$(basename "$0")" "CPU 与内存专项深度分析，兼容 Linux 与 macOS" "  --no-mpstat           禁用多核采样（Linux 下有效）
+  --interval N          采样间隔（秒，默认: 1）
+  --count N             采样次数（默认: 3）"
+		exit 0
+		;;
+	*)
+		# 忽略其他参数
+		shift
+		;;
+	esac
+done
 
 # ==============================================================================
 # 按系统选择命令 / 工具探测
 # 集中定义平台相关命令，后续统一引用，避免散落的裸调用跨平台失效
 # ==============================================================================
 if [ "$OS_TYPE" = "Darwin" ]; then
-    # --- macOS: 使用 sysctl / vm_stat / top -l / ps ---
-    : # macOS 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
+	# --- macOS: 使用 sysctl / vm_stat / top -l / ps ---
+	: # macOS 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
 elif [ "$OS_TYPE" = "Linux" ]; then
-    # --- Linux: 使用 /proc、top -bn1、mpstat(可选) ---
-    : # Linux 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
+	# --- Linux: 使用 /proc、top -bn1、mpstat(可选) ---
+	: # Linux 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
 else
-    echo "> ⚠️ 当前系统 ($OS_TYPE) 不是受支持的 Linux/macOS，部分功能可能不可用。" >&3
+	echo "> ⚠️ 当前系统 ($OS_TYPE) 不是受支持的 Linux/macOS，部分功能可能不可用。" >&3
 fi
 
-# 使用临时文件收集报告，避免进程替换的异步/交错问题
-TMP_REPORT=$(mktemp)
-
-# 保存原始 stdout，用于末尾恢复并显示报告
-exec 3>&1
-
-# 将后续所有输出重定向到临时 Markdown 文件
-exec > "$TMP_REPORT"
-
-# 启动横幅（实时打印到终端，不进报告文件）
-printf '\n\033[1;32m🚀 CPU/内存 分析开始\033[0m (共 12 个章节，执行期间会逐章显示进度)\n' >&3
-
-# ------------------------------------------------------------------------------
-# 实时进度提示：打印到 fd3（终端），不进入报告文件
-# ------------------------------------------------------------------------------
-progress() {
-    # $1=当前章节序号 $2=总章节数 $3=章节名
-    printf '\r\033[K🔄 [%s/%s] %s ...\n' "$1" "$2" "$3" >&3
-}
-
-# ==============================================================================
-# 通用辅助函数
-# ==============================================================================
-
-# 人类可读数字转换（兼容无 numfmt 的系统）
-hr_bytes() {
-    local bytes=$1
-    if [ -z "$bytes" ] || [ "$bytes" = "0" ]; then echo "0B"; return; fi
-    local units=("B" "KB" "MB" "GB" "TB")
-    local unit_idx=0
-    local value=$bytes
-    while (( $(echo "$value >= 1024" | bc 2>/dev/null || awk "BEGIN{print ($value>=1024)?1:0}") )) && [ $unit_idx -lt 4 ]; do
-        value=$(echo "scale=2; $value / 1024" | bc 2>/dev/null || awk "BEGIN{printf \"%.2f\", $value/1024}")
-        unit_idx=$((unit_idx + 1))
-    done
-    echo "${value}${units[$unit_idx]}"
-}
-
-# KB 转人类可读
-hr_kb() {
-    local kb=$1
-    if [ -z "$kb" ] || [ "$kb" = "0" ]; then echo "0KB"; return; fi
-    local bytes=$((kb * 1024))
-    hr_bytes $bytes
-}
-
-# 安全读取 sysctl（macOS）
-read_sysctl() {
-    sysctl -n "$1" 2>/dev/null || echo "N/A"
-}
+# 报告开始
+ss::report_begin "CPU/内存 分析" 12
 
 # ==============================================================================
 # OS 检测与基础信息
@@ -117,25 +115,25 @@ echo ""
 # 1. CPU 基础信息
 # ==============================================================================
 
-progress 1 12 "CPU 基础信息"
+ss::progress 1 12 "CPU 基础信息"
 echo "## 1. CPU 基础信息"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS CPU 信息
-    CPU_MODEL=$(read_sysctl "machdep.cpu.brand_string")
-    PHY_CORES=$(read_sysctl "hw.physicalcpu")
-    LOGIC_CORES=$(read_sysctl "hw.ncpu")
-    SIBLINGS=$(read_sysctl "hw.logicalcpu")
-    CPU_FREQ=$(read_sysctl "hw.cpufrequency")
+    CPU_MODEL=$(ss::read_sysctl "machdep.cpu.brand_string")
+    PHY_CORES=$(ss::read_sysctl "hw.physicalcpu")
+    LOGIC_CORES=$(ss::read_sysctl "hw.ncpu")
+    SIBLINGS=$(ss::read_sysctl "hw.logicalcpu")
+    CPU_FREQ=$(ss::read_sysctl "hw.cpufrequency")
     # Apple Silicon 等新硬件上 hw.cpufrequency 可能不存在
     if [ -n "$CPU_FREQ" ] && [ "$CPU_FREQ" != "N/A" ]; then
         CPU_FREQ_MHZ=$(echo "scale=0; $CPU_FREQ / 1000000" | bc 2>/dev/null || awk "BEGIN{printf \"%.0f\", $CPU_FREQ/1000000}")
     else
         CPU_FREQ_MHZ="N/A"
     fi
-    L2_CACHE=$(read_sysctl "hw.l2cachesize")
-    L3_CACHE=$(read_sysctl "hw.l3cachesize")
+    L2_CACHE=$(ss::read_sysctl "hw.l2cachesize")
+    L3_CACHE=$(ss::read_sysctl "hw.l3cachesize")
 
     # 预先计算每核心线程数，避免在 exec > >(tee) 下复杂的命令替换导致输出重复
     if command -v bc >/dev/null 2>&1 && [ -n "$SIBLINGS" ] && [ -n "$PHY_CORES" ] && [ "$PHY_CORES" != "N/A" ] && [ "$PHY_CORES" -gt 0 ]; then
@@ -151,8 +149,8 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     echo "| 逻辑核心数 (含超线程) | ${LOGIC_CORES} |"
     echo "| 每核心线程数 | ${THREADS_PER_CORE} |"
     echo "| 基础频率 | ${CPU_FREQ_MHZ} MHz |"
-    echo "| L2 缓存 | $(hr_bytes ${L2_CACHE}) |"
-    echo "| L3 缓存 | $(hr_bytes ${L3_CACHE}) |"
+    echo "| L2 缓存 | $(ss::hr_bytes ${L2_CACHE}) |"
+    echo "| L3 缓存 | $(ss::hr_bytes ${L3_CACHE}) |"
     echo ""
 else
     # Linux CPU 信息
@@ -193,13 +191,13 @@ fi
 # 2. CPU 负载与使用率
 # ==============================================================================
 
-progress 2 12 "CPU 负载与使用率"
+ss::progress 2 12 "CPU 负载与使用率"
 echo "## 2. CPU 负载与使用率"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS 负载
-    LOAD_RAW=$(read_sysctl "vm.loadavg")
+    LOAD_RAW=$(ss::read_sysctl "vm.loadavg")
     # 输出格式: { 1.23 2.34 3.45 }
     load1=$(echo "$LOAD_RAW" | awk '{print $2}')
     load5=$(echo "$LOAD_RAW" | awk '{print $3}')
@@ -308,7 +306,7 @@ fi
 # ==============================================================================
 
 if [ "$OS_TYPE" != "Darwin" ] && [ "$ENABLE_MPSTAT" = "true" ] && command -v mpstat &> /dev/null; then
-    progress 3 12 "多核 CPU 详细采样 (mpstat)"
+    ss::progress 3 12 "多核 CPU 详细采样 (mpstat)"
     echo "## 3. 多核 CPU 详细采样 (mpstat)"
     echo ""
     echo "> **说明:** 采样 ${SAMPLE_COUNT} 次，每次间隔 ${SAMPLE_INTERVAL} 秒，取平均值"
@@ -341,7 +339,7 @@ fi
 # 4. 内存总体概况
 # ==============================================================================
 
-progress 4 12 "内存总体概况"
+ss::progress 4 12 "内存总体概况"
 echo "## 4. 内存总体概况"
 echo ""
 echo "> **评估标准:** available < 总内存 10% 为危险；Swap 使用 > 0 说明曾发生内存交换"
@@ -349,8 +347,8 @@ echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS 内存：通过 vm_stat 和 sysctl
-    PAGE_SIZE=$(read_sysctl "hw.pagesize")
-    TOTAL_BYTES=$(read_sysctl "hw.memsize")
+    PAGE_SIZE=$(ss::read_sysctl "hw.pagesize")
+    TOTAL_BYTES=$(ss::read_sysctl "hw.memsize")
     TOTAL_KB=$((TOTAL_BYTES / 1024))
 
     # vm_stat 输出示例（macOS 格式）：
@@ -403,14 +401,14 @@ if [ "$OS_TYPE" = "Darwin" ]; then
 
     echo "| 指标 | 数值 (KB) | 人类可读 | 占比 | 状态 |"
     echo "|------|-----------|----------|------|------|"
-    echo "| 总内存 | $TOTAL_KB | $(hr_kb $TOTAL_KB) | 100% | - |"
-    echo "| 已使用 (估算) | $used_kb | $(hr_kb $used_kb) | ${used_pct}% | - |"
-    echo "| 可用 (free+inactive) | $avail_kb | $(hr_kb $avail_kb) | ${avail_pct}% | $mem_status |"
-    echo "| 活跃内存 | $active_kb | $(hr_kb $active_kb) | - | - |"
-    echo "| 空闲页 | $free_kb | $(hr_kb $free_kb) | - | - |"
-    echo "| 非活跃页 | $inactive_kb | $(hr_kb $inactive_kb) | - | - |"
-    echo "| 锁定页 (wired) | $wired_kb | $(hr_kb $wired_kb) | - | - |"
-    echo "| 压缩页 | $compressed_kb | $(hr_kb $compressed_kb) | - | - |"
+    echo "| 总内存 | $TOTAL_KB | $(ss::hr_kb $TOTAL_KB) | 100% | - |"
+    echo "| 已使用 (估算) | $used_kb | $(ss::hr_kb $used_kb) | ${used_pct}% | - |"
+    echo "| 可用 (free+inactive) | $avail_kb | $(ss::hr_kb $avail_kb) | ${avail_pct}% | $mem_status |"
+    echo "| 活跃内存 | $active_kb | $(ss::hr_kb $active_kb) | - | - |"
+    echo "| 空闲页 | $free_kb | $(ss::hr_kb $free_kb) | - | - |"
+    echo "| 非活跃页 | $inactive_kb | $(ss::hr_kb $inactive_kb) | - | - |"
+    echo "| 锁定页 (wired) | $wired_kb | $(ss::hr_kb $wired_kb) | - | - |"
+    echo "| 压缩页 | $compressed_kb | $(ss::hr_kb $compressed_kb) | - | - |"
     echo ""
 
     echo "> ℹ️ macOS 内存管理采用统一内存架构，inactive 页面可被快速回收，因此可用内存包含 inactive。"
@@ -443,12 +441,12 @@ else
 
     echo "| 指标 | 数值 (KB) | 人类可读 | 占比 | 状态 |"
     echo "|------|-----------|----------|------|------|"
-    echo "| 总内存 | $total_kb | $(hr_kb $total_kb) | 100% | - |"
-    echo "| 已使用 | $used_kb | $(hr_kb $used_kb) | ${used_pct}% | - |"
-    echo "| 可用 (available) | $avail_kb | $(hr_kb $avail_kb) | ${avail_pct}% | $mem_status |"
-    echo "| 缓存/缓冲 | $buff_kb | $(hr_kb $buff_kb) | ${cache_pct}% | - |"
-    echo "| 完全空闲 | $free_kb_val | $(hr_kb $free_kb_val) | - | - |"
-    echo "| 共享内存 | $shared_kb | $(hr_kb $shared_kb) | - | - |"
+    echo "| 总内存 | $total_kb | $(ss::hr_kb $total_kb) | 100% | - |"
+    echo "| 已使用 | $used_kb | $(ss::hr_kb $used_kb) | ${used_pct}% | - |"
+    echo "| 可用 (available) | $avail_kb | $(ss::hr_kb $avail_kb) | ${avail_pct}% | $mem_status |"
+    echo "| 缓存/缓冲 | $buff_kb | $(ss::hr_kb $buff_kb) | ${cache_pct}% | - |"
+    echo "| 完全空闲 | $free_kb_val | $(ss::hr_kb $free_kb_val) | - | - |"
+    echo "| 共享内存 | $shared_kb | $(ss::hr_kb $shared_kb) | - | - |"
     echo ""
 fi
 
@@ -456,7 +454,7 @@ fi
 # 5. Swap 使用情况
 # ==============================================================================
 
-progress 5 12 "Swap 使用情况"
+ss::progress 5 12 "Swap 使用情况"
 echo "## 5. Swap 使用情况"
 echo ""
 
@@ -507,9 +505,9 @@ else
 
         echo "| 指标 | 数值 (KB) | 人类可读 | 使用率 | 状态 |"
         echo "|------|-----------|----------|--------|------|"
-        echo "| Swap 总量 | $swap_total | $(hr_kb $swap_total) | 100% | - |"
-        echo "| Swap 已用 | $swap_used | $(hr_kb $swap_used) | ${swap_pct}% | $swap_status |"
-        echo "| Swap 空闲 | $swap_free | $(hr_kb $swap_free) | - | - |"
+        echo "| Swap 总量 | $swap_total | $(ss::hr_kb $swap_total) | 100% | - |"
+        echo "| Swap 已用 | $swap_used | $(ss::hr_kb $swap_used) | ${swap_pct}% | $swap_status |"
+        echo "| Swap 空闲 | $swap_free | $(ss::hr_kb $swap_free) | - | - |"
         echo ""
     fi
 fi
@@ -518,7 +516,7 @@ fi
 # 6. 内存压力与 OOM 风险 (Linux 详细 / macOS 简化)
 # ==============================================================================
 
-progress 6 12 "内存压力与 OOM 风险"
+ss::progress 6 12 "内存压力与 OOM 风险"
 echo "## 6. 内存压力与 OOM 风险"
 echo ""
 
@@ -537,7 +535,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     echo ""
 
     # macOS 内存压力
-    MEM_PRESSURE=$(read_sysctl "kern.memorystatus_vm_pressure_level")
+    MEM_PRESSURE=$(ss::read_sysctl "kern.memorystatus_vm_pressure_level")
     echo "### macOS 内存压力级别"
     echo ""
     echo "| 级别 | 数值 | 含义 |"
@@ -631,7 +629,7 @@ fi
 # 7. 进程状态分布
 # ==============================================================================
 
-progress 7 12 "进程状态分布"
+ss::progress 7 12 "进程状态分布"
 echo "## 7. 进程状态分布"
 echo ""
 echo "> **关键指标:** D 状态进程多 = 磁盘 IO 瓶颈；Z 状态进程 > 0 = 应用 Bug"
@@ -726,7 +724,7 @@ fi
 # 8. 上下文切换与中断统计 (Linux 原生 / macOS 近似)
 # ==============================================================================
 
-progress 8 12 "上下文切换与中断统计"
+ss::progress 8 12 "上下文切换与中断统计"
 echo "## 8. 上下文切换与中断统计"
 echo ""
 
@@ -773,7 +771,7 @@ fi
 # 9. Top 资源消耗进程
 # ==============================================================================
 
-progress 9 12 "Top 资源消耗进程"
+ss::progress 9 12 "Top 资源消耗进程"
 echo "## 9. Top 资源消耗进程"
 echo ""
 
@@ -820,15 +818,15 @@ echo ""
 # 10. 系统句柄与限制
 # ==============================================================================
 
-progress 10 12 "系统句柄与限制"
+ss::progress 10 12 "系统句柄与限制"
 echo "## 10. 系统句柄与限制"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS 句柄统计
-    KERN_FILES=$(read_sysctl "kern.num_files")
-    KERN_MAXFILES=$(read_sysctl "kern.maxfiles")
-    KERN_MAXPROC=$(read_sysctl "kern.maxproc")
+    KERN_FILES=$(ss::read_sysctl "kern.num_files")
+    KERN_MAXFILES=$(ss::read_sysctl "kern.maxfiles")
+    KERN_MAXPROC=$(ss::read_sysctl "kern.maxproc")
 
     if [ "$KERN_MAXFILES" != "N/A" ] && [ "$KERN_MAXFILES" -gt 0 ]; then
         file_pct=$(awk "BEGIN {printf \"%.2f\", $KERN_FILES/$KERN_MAXFILES*100}")
@@ -903,7 +901,7 @@ fi
 # ==============================================================================
 
 if [ "$OS_TYPE" != "Darwin" ]; then
-    progress 11 12 "内核内存 (Slab) 详情"
+    ss::progress 11 12 "内核内存 (Slab) 详情"
     echo "## 11. 内核内存 (Slab) 详情"
     echo ""
 
@@ -932,7 +930,7 @@ fi
 # 12. 负载趋势分析
 # ==============================================================================
 
-progress 12 12 "负载趋势分析"
+ss::progress 12 12 "负载趋势分析"
 echo "## 12. 负载趋势分析"
 echo ""
 
@@ -992,25 +990,27 @@ echo '```'
 echo ""
 echo "> 📄 **报告已保存至:** \`$REPORT_PATH\`"
 
-# 恢复原始 stdout，然后将临时文件同步输出到终端和 REPORT_PATH
-# 使用 cat + tee 替代异步的进程替换，避免输出交错
-exec 1>&3
-exec 3>&-
-cat "$TMP_REPORT" | tee "$REPORT_PATH"
-rm -f "$TMP_REPORT"
+# 报告结束
+ss::report_end "$REPORT_PATH"
 
-# 完成提示（实时打印到终端）
-printf '\033[1;32m✅ 分析完成\033[0m 报告已保存至: %s\n' "$REPORT_PATH" >&3
+# JSON 输出
+if [ "$JSON_OUTPUT" = "true" ]; then
+	summary="CPU/内存深度分析完成"
+	ss::print_json_metadata "success" "$REPORT_PATH" "cpu_mem_analyzer.sh" 0 "$summary" ""
+fi
 
-echo ""
-echo "✅ CPU/内存 深度分析报告已生成: $REPORT_PATH"
-echo "   操作系统: $OS_TYPE"
+# 显式退出码
+exit 0
 
 # ==============================================================================
 # 使用说明:
 # 1. 直接运行: ./cpu_mem_analyzer.sh
 #    输出同时显示在终端并写入 Markdown 文件
-# 2. 自定义输出路径: REPORT_PATH=/var/log/report.md ./cpu_mem_analyzer.sh
-# 3. Linux 下开启多核采样: ENABLE_MPSTAT=true ./cpu_mem_analyzer.sh (默认已开启)
-# 4. 配合 crontab 定时执行: 0 * * * * /path/to/cpu_mem_analyzer.sh
+# 2. 自定义输出路径: ./cpu_mem_analyzer.sh -o /var/log/report.md
+# 3. Linux 下开启多核采样: ./cpu_mem_analyzer.sh (默认已开启)
+# 4. 禁用多核采样: ./cpu_mem_analyzer.sh --no-mpstat
+# 5. 自定义采样间隔和次数: ./cpu_mem_analyzer.sh --interval 2 --count 5
+# 6. 静默模式: ./cpu_mem_analyzer.sh --quiet
+# 7. JSON 输出: ./cpu_mem_analyzer.sh --json
+# 8. 配合 crontab 定时执行: 0 * * * * /path/to/cpu_mem_analyzer.sh
 # ==============================================================================

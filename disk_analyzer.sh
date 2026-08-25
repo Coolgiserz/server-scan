@@ -93,188 +93,18 @@ REPORT_IO_UTIL_WARNING=100    # 报告建议中的 I/O %util 警告阈值（%）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/disk_analyzer.conf}"
 
-# 如果配置文件存在，则加载
-if [ -f "$CONFIG_FILE" ]; then
-	# 加载配置文件，只加载以特定前缀开头的变量
-	while IFS='=' read -r key value; do
-		# 跳过注释和空行
-		[[ "$key" =~ ^#.*$ ]] && continue
-		[[ -z "$key" ]] && continue
+# 加载共享库
+source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/cli.sh"
 
-		# 去除首尾空格
-		key=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-		value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+# 加载配置文件
+ss::load_config "$CONFIG_FILE" DISK_ INODE_ IO_ LARGE_FILE_ LOG_ DOCKER_ MOUNT_ SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_
 
-		# 去除引号
-		value=$(echo "$value" | sed 's/^["'\'']//;s/["'\'']$//')
+# 解析公共参数（必须在主shell中直接调用，不能用命令替换）
+ss::parse_common_args "$@"
 
-		# 只加载特定变量
-		case "$key" in
-		# Docker 数据目录
-		DOCKER_DATA_DIR)
-			eval "$key=\"$value\""
-			;;
-		# 指定目录扫描模式
-		SCAN_DEPTH | SCAN_TOP)
-			eval "$key=\"$value\""
-			;;
-		# 磁盘使用率阈值
-		DISK_USAGE_WARNING_THRESHOLD | DISK_USAGE_CRITICAL_THRESHOLD)
-			eval "$key=\"$value\""
-			;;
-		# inode 使用率阈值
-		INODE_USAGE_WARNING_THRESHOLD | INODE_USAGE_CRITICAL_THRESHOLD)
-			eval "$key=\"$value\""
-			;;
-		# I/O 性能阈值
-		IO_AWAIT_EXCELLENT_THRESHOLD | IO_AWAIT_GOOD_THRESHOLD | IO_AWAIT_SLOW_THRESHOLD | IO_UTIL_HEALTHY_THRESHOLD | IO_UTIL_BUSY_THRESHOLD)
-			eval "$key=\"$value\""
-			;;
-		# 大文件扫描配置
-		LARGE_FILE_SCAN_DEPTH | LARGE_FILE_SIZE_THRESHOLD | LARGE_FILE_SCAN_TIMEOUT)
-			eval "$key=\"$value\""
-			;;
-		# 日志文件扫描配置
-		LOG_SCAN_DIR | LOG_FILE_SIZE_THRESHOLD)
-			eval "$key=\"$value\""
-			;;
-		# Docker 扫描配置
-		DOCKER_IMAGE_TOP | DOCKER_CONTAINER_TOP | DOCKER_VOLUME_TOP | DOCKER_LOG_SIZE_THRESHOLD)
-			eval "$key=\"$value\""
-			;;
-		# 挂载点扫描配置
-		MOUNT_SCAN_DEPTH | MOUNT_SCAN_TOP | MOUNT_SCAN_TIMEOUT)
-			eval "$key=\"$value\""
-			;;
-		# 实时 I/O 配置
-		ENABLE_REALTIME_IO | REALTIME_IO_INTERVAL)
-			eval "$key=\"$value\""
-			;;
-		# 其他扫描配置
-		LARGE_FILE_TOP | DOCKER_BUILD_CACHE_TOP | DOCKER_CONTAINER_LOG_TOP | MACOS_IO_TPS_THRESHOLD | MACOS_IO_MBS_THRESHOLD | REPORT_DISK_USAGE_WARNING | REPORT_INODE_USAGE_WARNING | REPORT_IO_AWAIT_WARNING | REPORT_IO_UTIL_WARNING)
-			eval "$key=\"$value\""
-			;;
-		esac
-	done <"$CONFIG_FILE"
-fi
-
-# 人类可读大小转换（兼容无 GNU sort -h 的系统）
-hr_kb() {
-	local kb=$1
-	if [ -z "$kb" ] || [ "$kb" = "0" ]; then
-		echo "0KB"
-		return
-	fi
-	local units=("KB" "MB" "GB" "TB")
-	local unit_idx=0
-	local value=$kb
-	while awk "BEGIN {exit !($value >= 1024)}" 2>/dev/null && [ $unit_idx -lt 3 ]; do
-		value=$(awk "BEGIN {printf \"%.2f\", $value/1024}")
-		unit_idx=$((unit_idx + 1))
-	done
-	echo "${value}${units[$unit_idx]}"
-}
-
-# 是否启用实时 I/O 负载快照（需要采集 2 秒，默认关闭以加快执行）
-# 设为 "true" 可开启第 10 节实时 I/O 瞬时速率分析
-ENABLE_REALTIME_IO="false"
-
-# 颜色开关：输出到 Markdown 文件时无需颜色，终端预览时可开启
-# 本脚本默认关闭颜色，保证 Markdown 纯净
-# shellcheck disable=SC2034
-COLOR_OUTPUT="false"
-
-# ==============================================================================
-# 命令行参数解析
-# ==============================================================================
-show_usage() {
-	cat <<'EOF'
-用法: $0 [选项]
-
-选项:
-  -d, --dir DIR       指定扫描目录（可多次指定或使用空格分隔多个目录）
-  --depth N           子目录扫描深度（默认: 3）
-  --top N             显示 Top N 结果（默认: 20）
-  -h, --help          显示此帮助信息
-
-配置文件:
-  在当前目录创建 disk_analyzer.conf 文件，可自定义以下配置:
-
-  磁盘使用率阈值:
-    - DISK_USAGE_WARNING_THRESHOLD: 磁盘使用率警告阈值（%，默认: 80）
-    - DISK_USAGE_CRITICAL_THRESHOLD: 磁盘使用率危险阈值（%，默认: 90）
-
-  inode 使用率阈值:
-    - INODE_USAGE_WARNING_THRESHOLD: inode 使用率警告阈值（%，默认: 70）
-    - INODE_USAGE_CRITICAL_THRESHOLD: inode 使用率危险阈值（%，默认: 90）
-
-  I/O 性能阈值:
-    - IO_AWAIT_EXCELLENT_THRESHOLD: I/O await 优秀阈值（ms，默认: 10）
-    - IO_AWAIT_GOOD_THRESHOLD: I/O await 正常阈值（ms，默认: 20）
-    - IO_AWAIT_SLOW_THRESHOLD: I/O await 缓慢阈值（ms，默认: 50）
-    - IO_UTIL_HEALTHY_THRESHOLD: I/O %util 健康阈值（%，默认: 60）
-    - IO_UTIL_BUSY_THRESHOLD: I/O %util 繁忙阈值（%，默认: 80）
-
-  大文件扫描配置:
-    - LARGE_FILE_SCAN_DEPTH: 大文件扫描深度（默认: 6）
-    - LARGE_FILE_SIZE_THRESHOLD: 大文件大小阈值（默认: 1G）
-    - LARGE_FILE_SCAN_TIMEOUT: 大文件扫描超时时间（秒，默认: 30）
-
-  日志文件扫描配置:
-    - LOG_SCAN_DIR: 日志扫描目录（默认: /var/log）
-    - LOG_FILE_SIZE_THRESHOLD: 日志文件大小阈值（默认: 100M）
-
-  Docker 扫描配置:
-    - DOCKER_DATA_DIR: 自定义 Docker 数据目录路径
-    - DOCKER_IMAGE_TOP: Docker 镜像 Top N（默认: 15）
-    - DOCKER_CONTAINER_TOP: Docker 容器 Top N（默认: 10）
-    - DOCKER_VOLUME_TOP: Docker 卷 Top N（默认: 15）
-    - DOCKER_LOG_SIZE_THRESHOLD: Docker 日志文件大小阈值（默认: 100M）
-
-  挂载点扫描配置:
-    - MOUNT_SCAN_DEPTH: 挂载点扫描深度（默认: 1）
-    - MOUNT_SCAN_TOP: 挂载点扫描 Top N（默认: 10）
-    - MOUNT_SCAN_TIMEOUT: 挂载点扫描超时时间（秒，默认: 20）
-
-  指定目录扫描模式配置:
-    - SCAN_DEPTH: 指定目录扫描深度（默认: 3）
-    - SCAN_TOP: 指定目录扫描 Top N（默认: 20）
-
-  实时 I/O 配置:
-    - ENABLE_REALTIME_IO: 是否启用实时 I/O 负载快照（true/false，默认: false）
-    - REALTIME_IO_INTERVAL: 实时 I/O 采样间隔（秒，默认: 2）
-
-  其他扫描配置:
-    - LARGE_FILE_TOP: 大文件 Top N（默认: 20）
-    - DOCKER_BUILD_CACHE_TOP: Docker 构建缓存 Top N（默认: 15）
-    - DOCKER_CONTAINER_LOG_TOP: 运行中容器日志大小 Top N（默认: 10）
-    - MACOS_IO_TPS_THRESHOLD: macOS I/O tps 阈值（默认: 1000）
-    - MACOS_IO_MBS_THRESHOLD: macOS I/O MB/s 阈值（默认: 100）
-    - REPORT_DISK_USAGE_WARNING: 报告建议中的磁盘使用率警告阈值（%，默认: 85）
-    - REPORT_INODE_USAGE_WARNING: 报告建议中的 inode 使用率警告阈值（%，默认: 80）
-    - REPORT_IO_AWAIT_WARNING: 报告建议中的 I/O await 警告阈值（ms，默认: 20）
-    - REPORT_IO_UTIL_WARNING: 报告建议中的 I/O %util 警告阈值（%，默认: 100）
-
-  示例配置文件: disk_analyzer.conf.example
-
-示例:
-  # 全盘扫描（默认行为）
-  $0
-
-  # 扫描单个目录
-  $0 -d /var/log
-
-  # 扫描多个目录
-  $0 -d /var/log -d /home/user
-  $0 -d "/var/log /home/user"
-
-  # 自定义扫描深度和 Top N
-  $0 -d /data --depth 5 --top 30
-EOF
-	exit 0
-}
-
-# 解析命令行参数
+# 脚本特定参数解析（解析 SCRIPT_ARGS 中剩余的参数）
+set -- "${SCRIPT_ARGS[@]}"
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-d | --dir)
@@ -286,8 +116,8 @@ while [[ $# -gt 0 ]]; do
 			DIR_SCAN_MODE="true"
 			shift 2
 		else
-			echo "错误: -d/--dir 需要指定目录参数" >&2
-			exit 1
+			ss::log_error "错误: -d/--dir 需要指定目录参数"
+			exit 2
 		fi
 		;;
 	--depth)
@@ -295,8 +125,8 @@ while [[ $# -gt 0 ]]; do
 			SCAN_DEPTH="$2"
 			shift 2
 		else
-			echo "错误: --depth 需要指定数字参数" >&2
-			exit 1
+			ss::log_error "错误: --depth 需要指定数字参数"
+			exit 2
 		fi
 		;;
 	--top)
@@ -304,16 +134,22 @@ while [[ $# -gt 0 ]]; do
 			SCAN_TOP="$2"
 			shift 2
 		else
-			echo "错误: --top 需要指定数字参数" >&2
-			exit 1
+			ss::log_error "错误: --top 需要指定数字参数"
+			exit 2
 		fi
 		;;
 	-h | --help)
-		show_usage
+		ss::print_usage "$(basename "$0")" "磁盘专项深度分析" "  -d, --dir DIR       指定扫描目录（可多次指定或使用空格分隔多个目录）
+  --depth N           子目录扫描深度（默认: 3）
+  --top N             显示 Top N 结果（默认: 20）"
+		exit 0
 		;;
 	*)
-		echo "错误: 未知参数 '$1'" >&2
-		show_usage
+		ss::log_error "错误: 未知参数 '$1'"
+		ss::print_usage "$(basename "$0")" "磁盘专项深度分析" "  -d, --dir DIR       指定扫描目录（可多次指定或使用空格分隔多个目录）
+  --depth N           子目录扫描深度（默认: 3）
+  --top N             显示 Top N 结果（默认: 20）"
+		exit 2
 		;;
 	esac
 done
@@ -326,13 +162,12 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 		if [ -d "$dir" ]; then
 			valid_dirs+=("$dir")
 		else
-			echo "警告: 目录 '$dir' 不存在，已跳过" >&2
+			ss::log_warn "警告: 目录 '$dir' 不存在，已跳过"
 		fi
 	done
 
 	if [ ${#valid_dirs[@]} -eq 0 ]; then
-		echo "错误: 没有有效的扫描目录" >&2
-		exit 1
+		ss::die "错误: 没有有效的扫描目录" 2
 	fi
 
 	SCAN_DIRS=("${valid_dirs[@]}")
@@ -342,73 +177,20 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 	REPORT_PATH="/tmp/disk_report_${dir_tag}_$(date '+%Y%m%d_%H%M%S').md"
 fi
 
-# 检测操作系统
-OS_TYPE=$(uname -s)
-
 # ==============================================================================
 # 按系统选择命令 / 工具探测
-# 集中定义平台相关命令，后续统一引用，避免散落的裸调用跨平台失效
 # ==============================================================================
-
-# ------------------------------------------------------------------------------
-# 跨平台超时封装 run_with_timeout <秒> <命令...>
-# GNU timeout 优先；macOS 装了 coreutils 则有 gtimeout；都没有则用后台进程+kill 自实现
-# ------------------------------------------------------------------------------
-if command -v timeout >/dev/null 2>&1; then
-	run_with_timeout() { timeout "$@"; }
-elif command -v gtimeout >/dev/null 2>&1; then
-	run_with_timeout() { gtimeout "$@"; }
-else
-	run_with_timeout() {
-		local secs="$1"
-		shift
-		"$@" &
-		local pid=$!
-		local waited=0
-		while kill -0 "$pid" 2>/dev/null; do
-			sleep 1
-			waited=$((waited + 1))
-			if [ "$waited" -ge "$secs" ]; then
-				kill "$pid" 2>/dev/null
-				wait "$pid" 2>/dev/null
-				return 124
-			fi
-		done
-		wait "$pid" 2>/dev/null
-	}
-fi
 if [ "$OS_TYPE" = "Darwin" ]; then
-	# --- macOS: diskutil / df / mount / du ---
 	: # macOS 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
 elif [ "$OS_TYPE" = "Linux" ]; then
-	# --- Linux: lsblk / blkid / df / smartctl / iostat ---
 	: # Linux 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
-else
-	echo "> ⚠️ 当前系统 ($OS_TYPE) 不是受支持的 Linux/macOS，部分功能可能不可用。" >&3
 fi
 
-# 使用临时文件收集报告，避免进程替换的异步/交错问题
-TMP_REPORT=$(mktemp)
-
-# 保存原始 stdout，用于末尾恢复并显示报告
-exec 3>&1
-
-# 将后续所有输出重定向到临时 Markdown 文件
-exec >"$TMP_REPORT"
-
-# ------------------------------------------------------------------------------
-# 实时进度提示：打印到 fd3（终端），不进入报告文件
-# ------------------------------------------------------------------------------
-progress() {
-	# $1=当前章节序号 $2=总章节数 $3=章节名
-	printf '\r\033[K🔄 [%s/%s] %s ...\n' "$1" "$2" "$3" >&3
-}
-
-# 启动横幅（实时打印到终端，不进报告文件）
+# 报告开始（打开 fd3，重定向 stdout 到临时文件）
 if [ "$DIR_SCAN_MODE" = "true" ]; then
-	printf '\n\033[1;32m🚀 指定目录扫描开始\033[0m (共 %s 个目录，执行期间会逐目录显示进度)\n' "${#SCAN_DIRS[@]}" >&3
+	ss::report_begin "指定目录扫描开始 (共 ${#SCAN_DIRS[@]} 个目录)" "${#SCAN_DIRS[@]}"
 else
-	printf '\n\033[1;32m🚀 磁盘 分析开始\033[0m (共 10 个章节，执行期间会逐章显示进度)\n' >&3
+	ss::report_begin "磁盘深度分析" 10
 fi
 
 # ==============================================================================
@@ -454,7 +236,7 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 		local dir_index="$2"
 		local total_dirs="$3"
 
-		progress "$dir_index" "$total_dirs" "扫描目录: $target_dir"
+		ss::progress "$dir_index" "$total_dirs" "扫描目录: $target_dir"
 
 		echo "## 目录: \`$target_dir\`"
 		echo ""
@@ -472,7 +254,7 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 		local total_size_kb
 		total_size_kb=$(du -sk "$target_dir" 2>/dev/null | awk '{print $1}')
 		if [ -n "$total_size_kb" ]; then
-			echo "> **总大小:** $(hr_kb "$total_size_kb")"
+			echo "> **总大小:** $(ss::hr_kb "$total_size_kb")"
 		else
 			echo "> ⚠️ 无法计算目录总大小（可能权限不足）"
 		fi
@@ -506,7 +288,7 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 			while read -r size_kb path; do
 				# 跳过目标目录本身
 				if [ "$path" != "$target_dir" ]; then
-					echo "| $rank | $(hr_kb "$size_kb") | \`$path\` |"
+					echo "| $rank | $(ss::hr_kb "$size_kb") | \`$path\` |"
 					rank=$((rank + 1))
 				fi
 			done <"$tmp_subdirs"
@@ -533,7 +315,7 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 		if [ -s "$tmp_files" ]; then
 			local rank=1
 			while read -r size_kb filepath; do
-				echo "| $rank | $(hr_kb "$size_kb") | \`$filepath\` |"
+				echo "| $rank | $(ss::hr_kb "$size_kb") | \`$filepath\` |"
 				rank=$((rank + 1))
 			done <"$tmp_files"
 		else
@@ -579,7 +361,7 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 
 		if [ -s "$tmp_types" ]; then
 			while read -r ext count size_kb pct; do
-				echo "| \`$ext\` | $count | $(hr_kb "$size_kb") | $pct |"
+				echo "| \`$ext\` | $count | $(ss::hr_kb "$size_kb") | $pct |"
 			done <"$tmp_types"
 		else
 			echo "> ℹ️ 未找到文件或权限不足"
@@ -610,7 +392,7 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 
 		if [ -s "$tmp_levels" ]; then
 			while read -r depth size_kb path; do
-				echo "| $depth | $(hr_kb "$size_kb") | \`$path\` |"
+				echo "| $depth | $(ss::hr_kb "$size_kb") | \`$path\` |"
 			done <"$tmp_levels"
 		else
 			echo "> ℹ️ 未找到子目录或权限不足"
@@ -645,7 +427,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 1. 磁盘基础信息
 	# ==============================================================================
-	progress 1 10 "磁盘基础信息"
+	ss::progress 1 10 "磁盘基础信息"
 	echo "## 1. 磁盘基础信息"
 	echo ""
 
@@ -721,7 +503,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 2. 磁盘空间使用情况
 	# ==============================================================================
-	progress 2 10 "磁盘空间使用情况"
+	ss::progress 2 10 "磁盘空间使用情况"
 	echo "## 2. 磁盘空间使用情况"
 	echo ""
 	echo "> **评估标准:** 使用率 < ${DISK_USAGE_WARNING_THRESHOLD}% 健康，${DISK_USAGE_WARNING_THRESHOLD}%~${DISK_USAGE_CRITICAL_THRESHOLD}% 警告，> ${DISK_USAGE_CRITICAL_THRESHOLD}% 危险"
@@ -764,7 +546,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 3. inode 使用情况（关键！小文件过多会导致 inode 耗尽）
 	# ==============================================================================
-	progress 3 10 "inode 使用情况"
+	ss::progress 3 10 "inode 使用情况"
 	echo "## 3. inode 使用情况"
 	echo ""
 	echo "> **评估标准:** inode 使用率 < ${INODE_USAGE_WARNING_THRESHOLD}% 健康，${INODE_USAGE_WARNING_THRESHOLD}%~${INODE_USAGE_CRITICAL_THRESHOLD}% 警告，> ${INODE_USAGE_CRITICAL_THRESHOLD}% 危险"
@@ -808,7 +590,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 4. 磁盘 I/O 性能采样
 	# ==============================================================================
-	progress 4 10 "磁盘 I/O 性能采样"
+	ss::progress 4 10 "磁盘 I/O 性能采样"
 	echo "## 4. 磁盘 I/O 性能采样"
 	echo ""
 	# 检查 iostat 是否可用
@@ -899,7 +681,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 5. 大文件与目录扫描（定位空间占用大户）
 	# ==============================================================================
-	progress 5 10 "空间占用大户扫描"
+	ss::progress 5 10 "空间占用大户扫描"
 	echo "## 5. 空间占用大户扫描"
 	echo ""
 	# 扫描各挂载点下占用空间最大的前 ${MOUNT_SCAN_TOP} 个目录
@@ -924,12 +706,12 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		echo "| 大小 | 目录 |"
 		echo "|------|------|"
 		# du -k 输出 KB 数值，sort -rn 兼容所有 POSIX sort，再由 hr_kb 转换显示
-		# 2>/dev/null 忽略无权限目录的错误；run_with_timeout 避免挂载点扫描耗时过长
+		# 2>/dev/null 忽略无权限目录的错误；ss::run_with_timeout 避免挂载点扫描耗时过长
 		du_output=""
-		du_output=$(run_with_timeout "$MOUNT_SCAN_TIMEOUT" du -k $DU_DEPTH "$mount" 2>/dev/null | sort -rn | head -$((MOUNT_SCAN_TOP + 1)) | tail -"$MOUNT_SCAN_TOP")
+		du_output=$(ss::run_with_timeout "$MOUNT_SCAN_TIMEOUT" du -k $DU_DEPTH "$mount" 2>/dev/null | sort -rn | head -$((MOUNT_SCAN_TOP + 1)) | tail -"$MOUNT_SCAN_TOP")
 		if [ -n "$du_output" ]; then
 			echo "$du_output" | while read -r size_kb path; do
-				echo "| $(hr_kb "$size_kb") | $path |"
+				echo "| $(ss::hr_kb "$size_kb") | $path |"
 			done
 		else
 			echo "> ⚠️ 挂载点 \`$mount\` 目录扫描未返回结果（可能超时或权限不足）"
@@ -943,20 +725,20 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	echo ""
 	echo "| 大小 | 文件路径 |"
 	echo "|------|----------|"
-	# run_with_timeout 已按系统自动选择 timeout/gtimeout/自实现，macOS 也能安全限时
-	run_with_timeout "$LARGE_FILE_SCAN_TIMEOUT" find / -maxdepth "$LARGE_FILE_SCAN_DEPTH" -type f -size +"$LARGE_FILE_SIZE_THRESHOLD" \
+	# ss::run_with_timeout 已按系统自动选择 timeout/gtimeout/自实现，macOS 也能安全限时
+	ss::run_with_timeout "$LARGE_FILE_SCAN_TIMEOUT" find / -maxdepth "$LARGE_FILE_SCAN_DEPTH" -type f -size +"$LARGE_FILE_SIZE_THRESHOLD" \
 		-not -path "/proc/*" -not -path "/sys/*" -not -path "/dev/*" -not -path "/run/*" \
 		2>/dev/null | while read -r file; do
 		du -k "$file" 2>/dev/null
 	done | sort -rn | head -"$LARGE_FILE_TOP" | while read -r size_kb path; do
-		echo "| $(hr_kb "$size_kb") | $path |"
+		echo "| $(ss::hr_kb "$size_kb") | $path |"
 	done
 	echo ""
 
 	# ==============================================================================
 	# 6. 日志文件专项扫描（日志膨胀是磁盘满的元凶之一）
 	# ==============================================================================
-	progress 6 10 "日志文件专项扫描"
+	ss::progress 6 10 "日志文件专项扫描"
 	echo "## 6. 日志文件专项扫描"
 	echo ""
 	echo "### 大于 ${LOG_FILE_SIZE_THRESHOLD} 的日志文件"
@@ -978,7 +760,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 7. LVM 逻辑卷信息（如果使用 LVM）
 	# ==============================================================================
-	progress 7 10 "LVM 逻辑卷信息"
+	ss::progress 7 10 "LVM 逻辑卷信息"
 	echo "## 7. LVM 逻辑卷信息"
 	echo ""
 	if command -v lvs &>/dev/null && command -v vgs &>/dev/null; then
@@ -1013,7 +795,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 8. 磁盘健康状态 (SMART)
 	# ==============================================================================
-	progress 8 10 "磁盘健康状态 (SMART)"
+	ss::progress 8 10 "磁盘健康状态 (SMART)"
 	echo "## 8. 磁盘健康状态 (SMART)"
 	echo ""
 	if ! command -v smartctl &>/dev/null; then
@@ -1063,7 +845,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 9. 挂载参数与文件系统特性
 	# ==============================================================================
-	progress 9 10 "挂载参数与文件系统特性"
+	ss::progress 9 10 "挂载参数与文件系统特性"
 	echo "## 9. 挂载参数与文件系统特性"
 	echo ""
 	echo "| 设备 | 挂载点 | 类型 | 参数 |"
@@ -1103,7 +885,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	# ==============================================================================
 	# 10. Docker 空间占用专项扫描
 	# ==============================================================================
-	progress 10 10 "Docker 空间占用专项扫描"
+	ss::progress 10 10 "Docker 空间占用专项扫描"
 	echo "## 10. Docker 空间占用专项扫描"
 	echo ""
 	if ! command -v docker &>/dev/null; then
@@ -1142,7 +924,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 				echo "${size_kb:-0}	$sub"
 			done | sort -rn | while IFS=$'\t' read -r size_kb path; do
 				dir_name=$(basename "$path")
-				printf "| %s | %s |\n" "$dir_name" "$(hr_kb "$size_kb")"
+				printf "| %s | %s |\n" "$dir_name" "$(ss::hr_kb "$size_kb")"
 			done
 		elif [ -d "/var/lib/docker" ]; then
 			# 使用默认目录
@@ -1158,7 +940,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 				echo "${size_kb:-0}	$sub"
 			done | sort -rn | while IFS=$'\t' read -r size_kb path; do
 				dir_name=$(basename "$path")
-				printf "| %s | %s |\n" "$dir_name" "$(hr_kb "$size_kb")"
+				printf "| %s | %s |\n" "$dir_name" "$(ss::hr_kb "$size_kb")"
 			done
 		else
 			# 尝试通过 docker info 获取 Docker Root Dir
@@ -1176,7 +958,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 					echo "${size_kb:-0}	$sub"
 				done | sort -rn | while IFS=$'\t' read -r size_kb path; do
 					dir_name=$(basename "$path")
-					printf "| %s | %s |\n" "$dir_name" "$(hr_kb "$size_kb")"
+					printf "| %s | %s |\n" "$dir_name" "$(ss::hr_kb "$size_kb")"
 				done
 			else
 				echo "> ⚠️ 无法定位 Docker 数据目录（权限不足或非标准路径）"
@@ -1242,7 +1024,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 				echo "${vol_size_kb:-0}	$vol"
 			fi
 		done | sort -rn | head -"$DOCKER_VOLUME_TOP" | while IFS=$'\t' read -r vol_size_kb vol; do
-			printf "| %s | %s |\n" "$(hr_kb "$vol_size_kb")" "$vol"
+			printf "| %s | %s |\n" "$(ss::hr_kb "$vol_size_kb")" "$vol"
 		done
 		echo ""
 
@@ -1313,7 +1095,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 			# 日志总大小
 			log_total=$(find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -exec du -ck {} + 2>/dev/null | tail -1 | awk '{print $1}')
 			if [ -n "$log_total" ] && [ "$log_total" -gt 0 ]; then
-				echo "> **容器日志文件总大小:** $(hr_kb "$log_total")"
+				echo "> **容器日志文件总大小:** $(ss::hr_kb "$log_total")"
 				echo ""
 			fi
 		else
@@ -1333,7 +1115,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 				echo "${size_kb:-0}	$cname	$cid"
 			fi
 		done | sort -rn | head -"$DOCKER_CONTAINER_LOG_TOP" | while IFS=$'\t' read -r size_kb name id; do
-			printf "| %s | %s | %s |\n" "$(hr_kb "$size_kb")" "$name" "$id"
+			printf "| %s | %s | %s |\n" "$(ss::hr_kb "$size_kb")" "$name" "$id"
 		done
 		echo ""
 
@@ -1447,20 +1229,16 @@ else
 fi
 
 # ==============================================================================
-# 报告尾部结束：将临时文件同时输出到终端和 REPORT_PATH
+# 报告尾部结束
 # ==============================================================================
-# 恢复原始 stdout，然后将临时文件同步输出到终端和 REPORT_PATH
-# 使用 cat + tee 替代异步的进程替换，避免输出交错
-exec 1>&3
-exec 3>&-
-cat "$TMP_REPORT" | tee "$REPORT_PATH"
-rm -f "$TMP_REPORT"
+ss::report_end "$REPORT_PATH"
 
-# 完成提示（实时打印到终端）
-printf '\033[1;32m✅ 分析完成\033[0m 报告已保存至: %s\n' "$REPORT_PATH" >&3
+# JSON 输出（供 Agent 程序化消费）
+if [ "$JSON_OUTPUT" = "true" ]; then
+	ss::print_json_metadata "success" "$REPORT_PATH" "disk_analyzer.sh" 0 "" ""
+fi
 
-echo ""
-echo "✅ 磁盘分析报告已生成: $REPORT_PATH"
+exit 0
 
 # ==============================================================================
 # 使用说明:
