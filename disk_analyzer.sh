@@ -33,6 +33,60 @@ DIR_SCAN_MODE="false" # 是否为指定目录扫描模式
 DOCKER_DATA_DIR="" # 自定义 Docker 数据目录
 
 # ==============================================================================
+# 可配置阈值（可通过配置文件覆盖）
+# ==============================================================================
+
+# 磁盘使用率阈值
+DISK_USAGE_WARNING_THRESHOLD=80  # 磁盘使用率警告阈值（%）
+DISK_USAGE_CRITICAL_THRESHOLD=90 # 磁盘使用率危险阈值（%）
+
+# inode 使用率阈值
+INODE_USAGE_WARNING_THRESHOLD=70  # inode 使用率警告阈值（%）
+INODE_USAGE_CRITICAL_THRESHOLD=90 # inode 使用率危险阈值（%）
+
+# I/O 性能阈值
+IO_AWAIT_EXCELLENT_THRESHOLD=10 # I/O await 优秀阈值（ms）
+IO_AWAIT_GOOD_THRESHOLD=20      # I/O await 正常阈值（ms）
+IO_AWAIT_SLOW_THRESHOLD=50      # I/O await 缓慢阈值（ms）
+IO_UTIL_HEALTHY_THRESHOLD=60    # I/O %util 健康阈值（%）
+IO_UTIL_BUSY_THRESHOLD=80       # I/O %util 繁忙阈值（%）
+
+# 大文件扫描配置
+LARGE_FILE_SCAN_DEPTH=6        # 大文件扫描深度
+LARGE_FILE_SIZE_THRESHOLD="1G" # 大文件大小阈值
+LARGE_FILE_SCAN_TIMEOUT=30     # 大文件扫描超时时间（秒）
+
+# 日志文件扫描配置
+LOG_SCAN_DIR="/var/log"        # 日志扫描目录
+LOG_FILE_SIZE_THRESHOLD="100M" # 日志文件大小阈值
+
+# Docker 扫描配置
+DOCKER_IMAGE_TOP=15              # Docker 镜像 Top N
+DOCKER_CONTAINER_TOP=10          # Docker 容器 Top N
+DOCKER_VOLUME_TOP=15             # Docker 卷 Top N
+DOCKER_LOG_SIZE_THRESHOLD="100M" # Docker 日志文件大小阈值
+
+# 挂载点扫描配置
+MOUNT_SCAN_DEPTH=1    # 挂载点扫描深度
+MOUNT_SCAN_TOP=10     # 挂载点扫描 Top N
+MOUNT_SCAN_TIMEOUT=20 # 挂载点扫描超时时间（秒）
+
+# 实时 I/O 配置
+ENABLE_REALTIME_IO="false" # 是否启用实时 I/O 负载快照
+REALTIME_IO_INTERVAL=2     # 实时 I/O 采样间隔（秒）
+
+# 其他扫描配置
+LARGE_FILE_TOP=20             # 大文件 Top N
+DOCKER_BUILD_CACHE_TOP=15     # Docker 构建缓存 Top N
+DOCKER_CONTAINER_LOG_TOP=10   # 运行中容器日志大小 Top N
+MACOS_IO_TPS_THRESHOLD=1000   # macOS I/O tps 阈值
+MACOS_IO_MBS_THRESHOLD=100    # macOS I/O MB/s 阈值
+REPORT_DISK_USAGE_WARNING=85  # 报告建议中的磁盘使用率警告阈值（%）
+REPORT_INODE_USAGE_WARNING=80 # 报告建议中的 inode 使用率警告阈值（%）
+REPORT_IO_AWAIT_WARNING=20    # 报告建议中的 I/O await 警告阈值（ms）
+REPORT_IO_UTIL_WARNING=100    # 报告建议中的 I/O %util 警告阈值（%）
+
+# ==============================================================================
 # 配置文件加载
 # ==============================================================================
 # 默认配置文件路径（当前目录下的 disk_analyzer.conf）
@@ -56,7 +110,48 @@ if [ -f "$CONFIG_FILE" ]; then
 
 		# 只加载特定变量
 		case "$key" in
-		DOCKER_DATA_DIR | SCAN_DEPTH | SCAN_TOP | LARGE_FILE_SCAN_TIMEOUT | ENABLE_REALTIME_IO)
+		# Docker 数据目录
+		DOCKER_DATA_DIR)
+			eval "$key=\"$value\""
+			;;
+		# 指定目录扫描模式
+		SCAN_DEPTH | SCAN_TOP)
+			eval "$key=\"$value\""
+			;;
+		# 磁盘使用率阈值
+		DISK_USAGE_WARNING_THRESHOLD | DISK_USAGE_CRITICAL_THRESHOLD)
+			eval "$key=\"$value\""
+			;;
+		# inode 使用率阈值
+		INODE_USAGE_WARNING_THRESHOLD | INODE_USAGE_CRITICAL_THRESHOLD)
+			eval "$key=\"$value\""
+			;;
+		# I/O 性能阈值
+		IO_AWAIT_EXCELLENT_THRESHOLD | IO_AWAIT_GOOD_THRESHOLD | IO_AWAIT_SLOW_THRESHOLD | IO_UTIL_HEALTHY_THRESHOLD | IO_UTIL_BUSY_THRESHOLD)
+			eval "$key=\"$value\""
+			;;
+		# 大文件扫描配置
+		LARGE_FILE_SCAN_DEPTH | LARGE_FILE_SIZE_THRESHOLD | LARGE_FILE_SCAN_TIMEOUT)
+			eval "$key=\"$value\""
+			;;
+		# 日志文件扫描配置
+		LOG_SCAN_DIR | LOG_FILE_SIZE_THRESHOLD)
+			eval "$key=\"$value\""
+			;;
+		# Docker 扫描配置
+		DOCKER_IMAGE_TOP | DOCKER_CONTAINER_TOP | DOCKER_VOLUME_TOP | DOCKER_LOG_SIZE_THRESHOLD)
+			eval "$key=\"$value\""
+			;;
+		# 挂载点扫描配置
+		MOUNT_SCAN_DEPTH | MOUNT_SCAN_TOP | MOUNT_SCAN_TIMEOUT)
+			eval "$key=\"$value\""
+			;;
+		# 实时 I/O 配置
+		ENABLE_REALTIME_IO | REALTIME_IO_INTERVAL)
+			eval "$key=\"$value\""
+			;;
+		# 其他扫描配置
+		LARGE_FILE_TOP | DOCKER_BUILD_CACHE_TOP | DOCKER_CONTAINER_LOG_TOP | MACOS_IO_TPS_THRESHOLD | MACOS_IO_MBS_THRESHOLD | REPORT_DISK_USAGE_WARNING | REPORT_INODE_USAGE_WARNING | REPORT_IO_AWAIT_WARNING | REPORT_IO_UTIL_WARNING)
 			eval "$key=\"$value\""
 			;;
 		esac
@@ -104,11 +199,62 @@ show_usage() {
 
 配置文件:
   在当前目录创建 disk_analyzer.conf 文件，可自定义以下配置:
+
+  磁盘使用率阈值:
+    - DISK_USAGE_WARNING_THRESHOLD: 磁盘使用率警告阈值（%，默认: 80）
+    - DISK_USAGE_CRITICAL_THRESHOLD: 磁盘使用率危险阈值（%，默认: 90）
+
+  inode 使用率阈值:
+    - INODE_USAGE_WARNING_THRESHOLD: inode 使用率警告阈值（%，默认: 70）
+    - INODE_USAGE_CRITICAL_THRESHOLD: inode 使用率危险阈值（%，默认: 90）
+
+  I/O 性能阈值:
+    - IO_AWAIT_EXCELLENT_THRESHOLD: I/O await 优秀阈值（ms，默认: 10）
+    - IO_AWAIT_GOOD_THRESHOLD: I/O await 正常阈值（ms，默认: 20）
+    - IO_AWAIT_SLOW_THRESHOLD: I/O await 缓慢阈值（ms，默认: 50）
+    - IO_UTIL_HEALTHY_THRESHOLD: I/O %util 健康阈值（%，默认: 60）
+    - IO_UTIL_BUSY_THRESHOLD: I/O %util 繁忙阈值（%，默认: 80）
+
+  大文件扫描配置:
+    - LARGE_FILE_SCAN_DEPTH: 大文件扫描深度（默认: 6）
+    - LARGE_FILE_SIZE_THRESHOLD: 大文件大小阈值（默认: 1G）
+    - LARGE_FILE_SCAN_TIMEOUT: 大文件扫描超时时间（秒，默认: 30）
+
+  日志文件扫描配置:
+    - LOG_SCAN_DIR: 日志扫描目录（默认: /var/log）
+    - LOG_FILE_SIZE_THRESHOLD: 日志文件大小阈值（默认: 100M）
+
+  Docker 扫描配置:
     - DOCKER_DATA_DIR: 自定义 Docker 数据目录路径
-    - SCAN_DEPTH: 指定目录扫描模式的默认扫描深度
-    - SCAN_TOP: 指定目录扫描模式的默认 Top N 数量
-    - LARGE_FILE_SCAN_TIMEOUT: 大文件扫描超时时间（秒）
-    - ENABLE_REALTIME_IO: 是否启用实时 I/O 负载快照（true/false）
+    - DOCKER_IMAGE_TOP: Docker 镜像 Top N（默认: 15）
+    - DOCKER_CONTAINER_TOP: Docker 容器 Top N（默认: 10）
+    - DOCKER_VOLUME_TOP: Docker 卷 Top N（默认: 15）
+    - DOCKER_LOG_SIZE_THRESHOLD: Docker 日志文件大小阈值（默认: 100M）
+
+  挂载点扫描配置:
+    - MOUNT_SCAN_DEPTH: 挂载点扫描深度（默认: 1）
+    - MOUNT_SCAN_TOP: 挂载点扫描 Top N（默认: 10）
+    - MOUNT_SCAN_TIMEOUT: 挂载点扫描超时时间（秒，默认: 20）
+
+  指定目录扫描模式配置:
+    - SCAN_DEPTH: 指定目录扫描深度（默认: 3）
+    - SCAN_TOP: 指定目录扫描 Top N（默认: 20）
+
+  实时 I/O 配置:
+    - ENABLE_REALTIME_IO: 是否启用实时 I/O 负载快照（true/false，默认: false）
+    - REALTIME_IO_INTERVAL: 实时 I/O 采样间隔（秒，默认: 2）
+
+  其他扫描配置:
+    - LARGE_FILE_TOP: 大文件 Top N（默认: 20）
+    - DOCKER_BUILD_CACHE_TOP: Docker 构建缓存 Top N（默认: 15）
+    - DOCKER_CONTAINER_LOG_TOP: 运行中容器日志大小 Top N（默认: 10）
+    - MACOS_IO_TPS_THRESHOLD: macOS I/O tps 阈值（默认: 1000）
+    - MACOS_IO_MBS_THRESHOLD: macOS I/O MB/s 阈值（默认: 100）
+    - REPORT_DISK_USAGE_WARNING: 报告建议中的磁盘使用率警告阈值（%，默认: 85）
+    - REPORT_INODE_USAGE_WARNING: 报告建议中的 inode 使用率警告阈值（%，默认: 80）
+    - REPORT_IO_AWAIT_WARNING: 报告建议中的 I/O await 警告阈值（ms，默认: 20）
+    - REPORT_IO_UTIL_WARNING: 报告建议中的 I/O %util 警告阈值（%，默认: 100）
+
   示例配置文件: disk_analyzer.conf.example
 
 示例:
@@ -578,9 +724,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	progress 2 10 "磁盘空间使用情况"
 	echo "## 2. 磁盘空间使用情况"
 	echo ""
-	echo "> **评估标准:** 使用率 < 80% 健康，80%~90% 警告，> 90% 危险"
+	echo "> **评估标准:** 使用率 < ${DISK_USAGE_WARNING_THRESHOLD}% 健康，${DISK_USAGE_WARNING_THRESHOLD}%~${DISK_USAGE_CRITICAL_THRESHOLD}% 警告，> ${DISK_USAGE_CRITICAL_THRESHOLD}% 危险"
 	echo ""
-	# 告警阈值: >80% 警告，>90% 危险
+	# 告警阈值: >${DISK_USAGE_WARNING_THRESHOLD}% 警告，>${DISK_USAGE_CRITICAL_THRESHOLD}% 危险
 	echo "| 文件系统 | 类型 | 总量 | 已用 | 可用 | 使用率 | 挂载点 | 状态 |"
 	echo "|----------|------|------|------|------|--------|--------|------|"
 	if [ "$OS_TYPE" = "Darwin" ]; then
@@ -588,9 +734,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		# 第1列=FS, 第2列=Size, 第3列=Used, 第4列=Avail, 第5列=Capacity, 第9列=Mounted on
 		df -h 2>/dev/null | grep -E '^/dev/' | while read -r fs size used avail capacity iused ifree ipct mount; do
 			use_num=$(echo "$capacity" | sed 's/%//')
-			if [ "$use_num" -ge 90 ]; then
+			if [ "$use_num" -ge "$DISK_USAGE_CRITICAL_THRESHOLD" ]; then
 				status="🔴 危险"
-			elif [ "$use_num" -ge 80 ]; then
+			elif [ "$use_num" -ge "$DISK_USAGE_WARNING_THRESHOLD" ]; then
 				status="🟡 警告"
 			else
 				status="🟢 健康"
@@ -603,9 +749,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		# Linux df -hT 格式: FS Type Size Used Avail Use% Mounted on
 		df -hT 2>/dev/null | grep -E '^/dev/' | while read -r fs type size used avail use mount; do
 			use_num=$(echo "$use" | sed 's/%//')
-			if [ "$use_num" -ge 90 ]; then
+			if [ "$use_num" -ge "$DISK_USAGE_CRITICAL_THRESHOLD" ]; then
 				status="🔴 危险"
-			elif [ "$use_num" -ge 80 ]; then
+			elif [ "$use_num" -ge "$DISK_USAGE_WARNING_THRESHOLD" ]; then
 				status="🟡 警告"
 			else
 				status="🟢 健康"
@@ -621,7 +767,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	progress 3 10 "inode 使用情况"
 	echo "## 3. inode 使用情况"
 	echo ""
-	echo "> **评估标准:** inode 使用率 < 70% 健康，70%~90% 警告，> 90% 危险"
+	echo "> **评估标准:** inode 使用率 < ${INODE_USAGE_WARNING_THRESHOLD}% 健康，${INODE_USAGE_WARNING_THRESHOLD}%~${INODE_USAGE_CRITICAL_THRESHOLD}% 警告，> ${INODE_USAGE_CRITICAL_THRESHOLD}% 危险"
 	echo "> **说明:** inode 是文件系统的元数据结构，即使磁盘空间未满，inode 耗尽也会导致无法创建新文件。"
 	echo ""
 	echo "| 文件系统 | inode 总量 | 已用 | 可用 | 使用率 | 挂载点 | 状态 |"
@@ -633,9 +779,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		# shellcheck disable=SC2034
 		df -i 2>/dev/null | grep -E '^/dev/' | while read -r fs blocks used avail capacity iused ifree ipct mount; do
 			use_num=$(echo "$ipct" | sed 's/%//')
-			if [ "$use_num" -ge 90 ]; then
+			if [ "$use_num" -ge "$INODE_USAGE_CRITICAL_THRESHOLD" ]; then
 				status="🔴 危险"
-			elif [ "$use_num" -ge 70 ]; then
+			elif [ "$use_num" -ge "$INODE_USAGE_WARNING_THRESHOLD" ]; then
 				status="🟡 警告"
 			else
 				status="🟢 健康"
@@ -647,9 +793,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	else
 		df -i 2>/dev/null | grep -E '^/dev/' | while read -r fs itotal iused iavail iuse mount; do
 			use_num=$(echo "$iuse" | sed 's/%//')
-			if [ "$use_num" -ge 90 ]; then
+			if [ "$use_num" -ge "$INODE_USAGE_CRITICAL_THRESHOLD" ]; then
 				status="🔴 危险"
-			elif [ "$use_num" -ge 70 ]; then
+			elif [ "$use_num" -ge "$INODE_USAGE_WARNING_THRESHOLD" ]; then
 				status="🟡 警告"
 			else
 				status="🟢 健康"
@@ -679,7 +825,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		echo "|------|------------|-----------|------------|------|"
 		# iostat -d -w 1 -c 6: 1秒间隔采样6次；解析 macOS 多设备并列格式
 		# 第一行为设备名，第二行为表头，后续每行按每设备3列分组
-		iostat -d -w 1 -c 6 2>/dev/null | awk '
+		iostat -d -w 1 -c 6 2>/dev/null | awk -v tps_threshold="$MACOS_IO_TPS_THRESHOLD" -v mbs_threshold="$MACOS_IO_MBS_THRESHOLD" '
         /^[[:space:]]*$/ { next }
         NR == 1 {
             # 第一行：设备名列表
@@ -711,8 +857,8 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
                 avg_tps = tps[d] / cnt[d]
                 avg_mbs = mbs[d] / cnt[d]
                 eval = ""
-                if (avg_tps > 1000) eval = "🟡 高 IOPS"
-                else if (avg_mbs > 100) eval = "🟡 高吞吐"
+                if (avg_tps > tps_threshold) eval = "🟡 高 IOPS"
+                else if (avg_mbs > mbs_threshold) eval = "🟡 高吞吐"
                 else eval = "✅ 正常"
                 printf "| %s | %.2f | %.1f | %.2f | %s |\n", d, avg_kbt, avg_tps, avg_mbs, eval
             }
@@ -720,8 +866,8 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     '
 		echo ""
 	else
-		echo "> **评估标准:** await < 10ms 优秀，10~20ms 正常，20~50ms 缓慢，> 50ms 严重瓶颈"
-		echo "> **%util:** < 60% 健康，60%~80% 繁忙，> 80% 饱和"
+		echo "> **评估标准:** await < ${IO_AWAIT_EXCELLENT_THRESHOLD}ms 优秀，${IO_AWAIT_EXCELLENT_THRESHOLD}~${IO_AWAIT_GOOD_THRESHOLD}ms 正常，${IO_AWAIT_GOOD_THRESHOLD}~${IO_AWAIT_SLOW_THRESHOLD}ms 缓慢，> ${IO_AWAIT_SLOW_THRESHOLD}ms 严重瓶颈"
+		echo "> **%util:** < ${IO_UTIL_HEALTHY_THRESHOLD}% 健康，${IO_UTIL_HEALTHY_THRESHOLD}%~${IO_UTIL_BUSY_THRESHOLD}% 繁忙，> ${IO_UTIL_BUSY_THRESHOLD}% 饱和"
 		echo ""
 		# iostat -x 1 6: 每秒采样一次，共采样 6 次（持续 6 秒），取最后平均值
 		# 关键指标说明:
@@ -731,17 +877,17 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		#   %util: 磁盘利用率，接近 100% 表示磁盘忙不过来
 		echo "| 设备 | r/s | w/s | rkB/s | wkB/s | await | %util | 评估 |"
 		echo "|------|-----|-----|-------|-------|-------|-------|------|"
-		iostat -x 1 6 2>/dev/null | tail -n +4 | awk '
+		iostat -x 1 6 2>/dev/null | tail -n +4 | awk -v await_excellent="$IO_AWAIT_EXCELLENT_THRESHOLD" -v await_good="$IO_AWAIT_GOOD_THRESHOLD" -v await_slow="$IO_AWAIT_SLOW_THRESHOLD" -v util_healthy="$IO_UTIL_HEALTHY_THRESHOLD" -v util_busy="$IO_UTIL_BUSY_THRESHOLD" '
         /^Device/ { next }
         /^[a-z]/ {
             eval = ""
-            if ($10 > 50) eval = "🔴 IO极慢"
-            else if ($10 > 20) eval = "🟡 IO较慢"
-            else if ($10 > 10) eval = "🟢 正常"
+            if ($10 > await_slow) eval = "🔴 IO极慢"
+            else if ($10 > await_good) eval = "🟡 IO较慢"
+            else if ($10 > await_excellent) eval = "🟢 正常"
             else eval = "✅ 优秀"
 
-            if ($11 > 80) eval = eval " 磁盘饱和"
-            else if ($11 > 50) eval = eval " 磁盘繁忙"
+            if ($11 > util_busy) eval = eval " 磁盘饱和"
+            else if ($11 > util_healthy) eval = eval " 磁盘繁忙"
 
             printf "| %s | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f%% | %s |\n",
             $1, $4, $5, $6, $7, $10, $11, eval
@@ -756,16 +902,16 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	progress 5 10 "空间占用大户扫描"
 	echo "## 5. 空间占用大户扫描"
 	echo ""
-	# 扫描各挂载点下占用空间最大的前 10 个目录
+	# 扫描各挂载点下占用空间最大的前 ${MOUNT_SCAN_TOP} 个目录
 	# 注意: 会跳过 /proc /sys /dev /run 等虚拟文件系统，避免无意义扫描
-	echo "### 各挂载点 Top10 大目录"
+	echo "### 各挂载点 Top${MOUNT_SCAN_TOP} 大目录"
 	echo ""
 	if [ "$OS_TYPE" = "Darwin" ]; then
 		MOUNT_COLUMN=9
-		DU_DEPTH="-d 1"
+		DU_DEPTH="-d $MOUNT_SCAN_DEPTH"
 	else
 		MOUNT_COLUMN=6
-		DU_DEPTH="--max-depth=1"
+		DU_DEPTH="--max-depth=$MOUNT_SCAN_DEPTH"
 	fi
 	for mount in $(df 2>/dev/null | grep -E '^/dev/' | awk -v col="$MOUNT_COLUMN" '{print $col}'); do
 		# 跳过虚拟文件系统挂载点
@@ -780,7 +926,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		# du -k 输出 KB 数值，sort -rn 兼容所有 POSIX sort，再由 hr_kb 转换显示
 		# 2>/dev/null 忽略无权限目录的错误；run_with_timeout 避免挂载点扫描耗时过长
 		du_output=""
-		du_output=$(run_with_timeout 20 du -k $DU_DEPTH "$mount" 2>/dev/null | sort -rn | head -11 | tail -10)
+		du_output=$(run_with_timeout "$MOUNT_SCAN_TIMEOUT" du -k $DU_DEPTH "$mount" 2>/dev/null | sort -rn | head -$((MOUNT_SCAN_TOP + 1)) | tail -"$MOUNT_SCAN_TOP")
 		if [ -n "$du_output" ]; then
 			echo "$du_output" | while read -r size_kb path; do
 				echo "| $(hr_kb "$size_kb") | $path |"
@@ -791,18 +937,18 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		echo ""
 	done
 
-	# 扫描大于 1GB 的大文件，按大小降序
+	# 扫描大于 ${LARGE_FILE_SIZE_THRESHOLD} 的大文件，按大小降序
 	# 使用 timeout 限制扫描时间，maxdepth 限制深度，避免根目录扫描耗时过长
-	echo "### 大于 1GB 的文件 Top20"
+	echo "### 大于 ${LARGE_FILE_SIZE_THRESHOLD} 的文件 Top${LARGE_FILE_TOP}"
 	echo ""
 	echo "| 大小 | 文件路径 |"
 	echo "|------|----------|"
 	# run_with_timeout 已按系统自动选择 timeout/gtimeout/自实现，macOS 也能安全限时
-	run_with_timeout "$LARGE_FILE_SCAN_TIMEOUT" find / -maxdepth 6 -type f -size +1G \
+	run_with_timeout "$LARGE_FILE_SCAN_TIMEOUT" find / -maxdepth "$LARGE_FILE_SCAN_DEPTH" -type f -size +"$LARGE_FILE_SIZE_THRESHOLD" \
 		-not -path "/proc/*" -not -path "/sys/*" -not -path "/dev/*" -not -path "/run/*" \
 		2>/dev/null | while read -r file; do
 		du -k "$file" 2>/dev/null
-	done | sort -rn | head -20 | while read -r size_kb path; do
+	done | sort -rn | head -"$LARGE_FILE_TOP" | while read -r size_kb path; do
 		echo "| $(hr_kb "$size_kb") | $path |"
 	done
 	echo ""
@@ -813,11 +959,11 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	progress 6 10 "日志文件专项扫描"
 	echo "## 6. 日志文件专项扫描"
 	echo ""
-	echo "### 大于 100MB 的日志文件"
+	echo "### 大于 ${LOG_FILE_SIZE_THRESHOLD} 的日志文件"
 	echo ""
 	echo "| 大小 | 文件路径 |"
 	echo "|------|----------|"
-	find /var/log -type f -size +100M 2>/dev/null | while read file; do
+	find "$LOG_SCAN_DIR" -type f -size +"$LOG_FILE_SIZE_THRESHOLD" 2>/dev/null | while read file; do
 		size=$(du -h "$file" 2>/dev/null | awk '{print $1}')
 		echo "| $size | $file |"
 	done
@@ -826,7 +972,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 	echo ""
 	echo "| 路径 | 总大小 |"
 	echo "|------|--------|"
-	du -sh /var/log 2>/dev/null | awk '{printf "| %s | %s |\n", $2, $1}'
+	du -sh "$LOG_SCAN_DIR" 2>/dev/null | awk '{printf "| %s | %s |\n", $2, $1}'
 	echo ""
 
 	# ==============================================================================
@@ -1039,14 +1185,14 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		fi
 		echo ""
 
-		# --- 10.3 镜像详情（按大小降序 Top15）---
-		echo "### 10.3 镜像占用 Top15"
+		# --- 10.3 镜像详情（按大小降序 Top${DOCKER_IMAGE_TOP}）---
+		echo "### 10.3 镜像占用 Top${DOCKER_IMAGE_TOP}"
 		echo ""
 		echo "> **说明:** 展示占用空间最大的镜像，\`<none>\` 为悬空镜像，可安全清理"
 		echo ""
 		echo "| 镜像仓库:标签 | 镜像 ID | 大小 | 创建时间 |"
 		echo "|---------------|---------|------|----------|"
-		docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedSince}}" 2>/dev/null | tail -n +2 | head -15 | while IFS=$'\t' read -r repo id size created; do
+		docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedSince}}" 2>/dev/null | tail -n +2 | head -"$DOCKER_IMAGE_TOP" | while IFS=$'\t' read -r repo id size created; do
 			# 清理空白标签
 			repo=$(echo "$repo" | sed 's/:<none>$/<none>/')
 			printf "| %s | %s | %s | %s |\n" "$repo" "$id" "$size" "$created"
@@ -1060,26 +1206,26 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 			echo ""
 		fi
 
-		# --- 10.4 容器空间占用 Top10 ---
-		echo "### 10.4 容器空间占用 Top10"
+		# --- 10.4 容器空间占用 Top${DOCKER_CONTAINER_TOP} ---
+		echo "### 10.4 容器空间占用 Top${DOCKER_CONTAINER_TOP}"
 		echo ""
-		echo "> **说明:** 展示可写层占用空间最大的容器，$(SIZE) 列含虚拟大小和实际写入大小"
+		echo "> **说明:** 展示可写层占用空间最大的容器，\$(SIZE) 列含虚拟大小和实际写入大小"
 		echo ""
 		echo "| 容器名 | 镜像 | 状态 | 可写层大小 |"
 		echo "|--------|------|------|------------|"
-		docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Size}}" 2>/dev/null | tail -n +2 | head -10 | while IFS=$'\t' read -r name image status size; do
+		docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Size}}" 2>/dev/null | tail -n +2 | head -"$DOCKER_CONTAINER_TOP" | while IFS=$'\t' read -r name image status size; do
 			printf "| %s | %s | %s | %s |\n" "$name" "$image" "$status" "$size"
 		done
 		echo ""
 
-		# --- 10.5 Volume 卷占用 Top15 ---
-		echo "### 10.5 Volume 卷占用 Top15"
+		# --- 10.5 Volume 卷占用 Top${DOCKER_VOLUME_TOP} ---
+		echo "### 10.5 Volume 卷占用 Top${DOCKER_VOLUME_TOP}"
 		echo ""
 		echo "> **说明:** 大体积卷通常是数据库、日志持久化等场景，注意区分活跃卷与孤立卷"
 		echo ""
 		echo "| 卷名称 | 驱动 | 挂载点 |"
 		echo "|--------|------|--------|"
-		docker volume ls --format "table {{.Name}}\t{{.Driver}}\t{{.Mountpoint}}" 2>/dev/null | tail -n +2 | head -15 | while IFS=$'\t' read -r name driver mountpoint; do
+		docker volume ls --format "table {{.Name}}\t{{.Driver}}\t{{.Mountpoint}}" 2>/dev/null | tail -n +2 | head -"$DOCKER_VOLUME_TOP" | while IFS=$'\t' read -r name driver mountpoint; do
 			printf "| %s | %s | %s |\n" "$name" "$driver" "$mountpoint"
 		done
 		echo ""
@@ -1095,7 +1241,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 				vol_size_kb=$(du -sk "$mountpoint" 2>/dev/null | awk '{print $1}')
 				echo "${vol_size_kb:-0}	$vol"
 			fi
-		done | sort -rn | head -15 | while IFS=$'\t' read -r vol_size_kb vol; do
+		done | sort -rn | head -"$DOCKER_VOLUME_TOP" | while IFS=$'\t' read -r vol_size_kb vol; do
 			printf "| %s | %s |\n" "$(hr_kb "$vol_size_kb")" "$vol"
 		done
 		echo ""
@@ -1121,7 +1267,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		if docker buildx du 2>/dev/null | head -1 | grep -q .; then
 			echo "| 类型 | 大小 | 是否活跃 |"
 			echo "|------|------|----------|"
-			docker buildx du 2>/dev/null | awk 'NR>1 && NF>=3 {printf "| %s | %s | %s |\n", $1, $2, $3}' | head -15
+			docker buildx du 2>/dev/null | awk 'NR>1 && NF>=3 {printf "| %s | %s | %s |\n", $1, $2, $3}' | head -"$DOCKER_BUILD_CACHE_TOP"
 			echo ""
 			# 构建缓存总量
 			build_total=$(docker buildx du 2>/dev/null | tail -1)
@@ -1154,11 +1300,11 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 		fi
 
 		if [ -n "$DOCKER_LOG_DIR" ]; then
-			echo "#### 大于 100MB 的容器日志文件"
+			echo "#### 大于 ${DOCKER_LOG_SIZE_THRESHOLD} 的容器日志文件"
 			echo ""
 			echo "| 大小 | 文件路径 |"
 			echo "|------|----------|"
-			find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -size +100M 2>/dev/null | while read -r logfile; do
+			find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -size +"$DOCKER_LOG_SIZE_THRESHOLD" 2>/dev/null | while read -r logfile; do
 				size=$(du -h "$logfile" 2>/dev/null | awk '{print $1}')
 				echo "| $size | $logfile |"
 			done
@@ -1175,8 +1321,8 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 			echo ""
 		fi
 
-		# 列出当前运行容器的日志大小 Top10
-		echo "#### 运行中容器日志大小 Top10"
+		# 列出当前运行容器的日志大小 Top${DOCKER_CONTAINER_LOG_TOP}
+		echo "#### 运行中容器日志大小 Top${DOCKER_CONTAINER_LOG_TOP}"
 		echo ""
 		echo "| 日志大小 | 容器名 | 容器 ID |"
 		echo "|----------|--------|---------|"
@@ -1186,7 +1332,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
 				size_kb=$(du -k "$log_size" 2>/dev/null | awk '{print $1}')
 				echo "${size_kb:-0}	$cname	$cid"
 			fi
-		done | sort -rn | head -10 | while IFS=$'\t' read -r size_kb name id; do
+		done | sort -rn | head -"$DOCKER_CONTAINER_LOG_TOP" | while IFS=$'\t' read -r size_kb name id; do
 			printf "| %s | %s | %s |\n" "$(hr_kb "$size_kb")" "$name" "$id"
 		done
 		echo ""
@@ -1223,7 +1369,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ] && [ "$ENABLE_REALTIME_IO" = "true" ]; then
 		echo "> ℹ️ macOS 暂无 /proc/diskstats 等价物，实时 I/O 快照暂不支持。"
 		echo "> 建议直接使用 \`iostat -d -w 1\` 观察瞬时速率。"
 	else
-		echo "> **说明:** 本节通过 2 秒间隔采样 /proc/diskstats 计算瞬时速率"
+		echo "> **说明:** 本节通过 ${REALTIME_IO_INTERVAL} 秒间隔采样 /proc/diskstats 计算瞬时速率"
 		echo ""
 		echo "| 设备 | 读扇区/秒 | 写扇区/秒 |"
 		echo "|------|-----------|-----------|"
@@ -1236,7 +1382,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ] && [ "$ENABLE_REALTIME_IO" = "true" ]; then
 			echo "$dev $read1 $write1"
 		done >/tmp/diskstats_before
 
-		sleep 2
+		sleep "$REALTIME_IO_INTERVAL"
 
 		# 第二次采样并计算差值
 		cat /proc/diskstats 2>/dev/null | awk '$3 ~ /^[a-z]/ {print}' | while read -r line; do
@@ -1249,9 +1395,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ] && [ "$ENABLE_REALTIME_IO" = "true" ]; then
 			if [ -n "$before" ]; then
 				read1=$(echo "$before" | awk '{print $2}')
 				write1=$(echo "$before" | awk '{print $3}')
-				# 计算 2 秒内的速率（扇区数差 / 2秒）
-				read_iops=$(((read2 - read1) / 2))
-				write_iops=$(((write2 - write1) / 2))
+				# 计算 ${REALTIME_IO_INTERVAL} 秒内的速率（扇区数差 / ${REALTIME_IO_INTERVAL}秒）
+				read_iops=$(((read2 - read1) / REALTIME_IO_INTERVAL))
+				write_iops=$(((write2 - write1) / REALTIME_IO_INTERVAL))
 				echo "| /dev/$dev | $read_iops | $write_iops |"
 			fi
 		done
@@ -1289,8 +1435,8 @@ else
 	echo ""
 	echo '```'
 	echo "请分析以下磁盘报告，重点关注："
-	echo "1. 是否有挂载点使用率超过 85% 或 inode 使用率超过 80%"
-	echo "2. I/O await 是否超过 20ms，%util 是否接近 100%"
+	echo "1. 是否有挂载点使用率超过 ${REPORT_DISK_USAGE_WARNING}% 或 inode 使用率超过 ${REPORT_INODE_USAGE_WARNING}%"
+	echo "2. I/O await 是否超过 ${REPORT_IO_AWAIT_WARNING}ms，%util 是否接近 ${REPORT_IO_UTIL_WARNING}%"
 	echo "3. 哪些目录或文件是空间占用大户，是否可以清理"
 	echo "4. SMART 状态是否正常，是否有坏扇区预警"
 	echo "5. Docker 空间占用是否合理，是否有大量悬空镜像、孤立卷或膨胀日志"
@@ -1330,10 +1476,50 @@ echo "✅ 磁盘分析报告已生成: $REPORT_PATH"
 # 4. 修改输出路径: REPORT_PATH=/var/log/report.md ./disk_analyzer.sh
 # 5. 配合 crontab 定时执行，直接生成 Markdown 供后续分析
 # 6. 配置文件: 在当前目录创建 disk_analyzer.conf 文件，可自定义以下配置:
-#    - DOCKER_DATA_DIR: 自定义 Docker 数据目录路径
-#    - SCAN_DEPTH: 指定目录扫描模式的默认扫描深度
-#    - SCAN_TOP: 指定目录扫描模式的默认 Top N 数量
-#    - LARGE_FILE_SCAN_TIMEOUT: 大文件扫描超时时间（秒）
-#    - ENABLE_REALTIME_IO: 是否启用实时 I/O 负载快照（true/false）
+#    磁盘使用率阈值:
+#      - DISK_USAGE_WARNING_THRESHOLD: 磁盘使用率警告阈值（%，默认: 80）
+#      - DISK_USAGE_CRITICAL_THRESHOLD: 磁盘使用率危险阈值（%，默认: 90）
+#    inode 使用率阈值:
+#      - INODE_USAGE_WARNING_THRESHOLD: inode 使用率警告阈值（%，默认: 70）
+#      - INODE_USAGE_CRITICAL_THRESHOLD: inode 使用率危险阈值（%，默认: 90）
+#    I/O 性能阈值:
+#      - IO_AWAIT_EXCELLENT_THRESHOLD: I/O await 优秀阈值（ms，默认: 10）
+#      - IO_AWAIT_GOOD_THRESHOLD: I/O await 正常阈值（ms，默认: 20）
+#      - IO_AWAIT_SLOW_THRESHOLD: I/O await 缓慢阈值（ms，默认: 50）
+#      - IO_UTIL_HEALTHY_THRESHOLD: I/O %util 健康阈值（%，默认: 60）
+#      - IO_UTIL_BUSY_THRESHOLD: I/O %util 繁忙阈值（%，默认: 80）
+#    大文件扫描配置:
+#      - LARGE_FILE_SCAN_DEPTH: 大文件扫描深度（默认: 6）
+#      - LARGE_FILE_SIZE_THRESHOLD: 大文件大小阈值（默认: 1G）
+#      - LARGE_FILE_SCAN_TIMEOUT: 大文件扫描超时时间（秒，默认: 30）
+#    日志文件扫描配置:
+#      - LOG_SCAN_DIR: 日志扫描目录（默认: /var/log）
+#      - LOG_FILE_SIZE_THRESHOLD: 日志文件大小阈值（默认: 100M）
+#    Docker 扫描配置:
+#      - DOCKER_DATA_DIR: 自定义 Docker 数据目录路径
+#      - DOCKER_IMAGE_TOP: Docker 镜像 Top N（默认: 15）
+#      - DOCKER_CONTAINER_TOP: Docker 容器 Top N（默认: 10）
+#      - DOCKER_VOLUME_TOP: Docker 卷 Top N（默认: 15）
+#      - DOCKER_LOG_SIZE_THRESHOLD: Docker 日志文件大小阈值（默认: 100M）
+#    挂载点扫描配置:
+#      - MOUNT_SCAN_DEPTH: 挂载点扫描深度（默认: 1）
+#      - MOUNT_SCAN_TOP: 挂载点扫描 Top N（默认: 10）
+#      - MOUNT_SCAN_TIMEOUT: 挂载点扫描超时时间（秒，默认: 20）
+#    指定目录扫描模式配置:
+#      - SCAN_DEPTH: 指定目录扫描深度（默认: 3）
+#      - SCAN_TOP: 指定目录扫描 Top N（默认: 20）
+#    实时 I/O 配置:
+#      - ENABLE_REALTIME_IO: 是否启用实时 I/O 负载快照（true/false，默认: false）
+#      - REALTIME_IO_INTERVAL: 实时 I/O 采样间隔（秒，默认: 2）
+#    其他扫描配置:
+#      - LARGE_FILE_TOP: 大文件 Top N（默认: 20）
+#      - DOCKER_BUILD_CACHE_TOP: Docker 构建缓存 Top N（默认: 15）
+#      - DOCKER_CONTAINER_LOG_TOP: 运行中容器日志大小 Top N（默认: 10）
+#      - MACOS_IO_TPS_THRESHOLD: macOS I/O tps 阈值（默认: 1000）
+#      - MACOS_IO_MBS_THRESHOLD: macOS I/O MB/s 阈值（默认: 100）
+#      - REPORT_DISK_USAGE_WARNING: 报告建议中的磁盘使用率警告阈值（%，默认: 85）
+#      - REPORT_INODE_USAGE_WARNING: 报告建议中的 inode 使用率警告阈值（%，默认: 80）
+#      - REPORT_IO_AWAIT_WARNING: 报告建议中的 I/O await 警告阈值（ms，默认: 20）
+#      - REPORT_IO_UTIL_WARNING: 报告建议中的 I/O %util 警告阈值（%，默认: 100）
 #    示例配置文件: disk_analyzer.conf.example
 # ==============================================================================
