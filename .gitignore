@@ -1,0 +1,15 @@
+# 配置文件（每台服务器可能不一致，不提交到版本控制）
+disk_analyzer.conf
+
+# 临时文件
+*.tmp
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 报告文件
+/tmp/disk_report_*.md
