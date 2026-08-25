@@ -12,7 +12,7 @@
 
 # --- 配置区 ---
 REPORT_PATH="/tmp/cpu_mem_report_$(date '+%Y%m%d_%H%M%S').md"
-ENABLE_MPSTAT="true"       # Linux 下有效，macOS 自动忽略
+ENABLE_MPSTAT="true" # Linux 下有效，macOS 自动忽略
 SAMPLE_INTERVAL=1
 SAMPLE_COUNT=3
 
@@ -29,40 +29,40 @@ ss::parse_common_args "$@"
 # 脚本特定参数解析（解析 SCRIPT_ARGS 中剩余的参数）
 set -- "${SCRIPT_ARGS[@]}"
 while [[ $# -gt 0 ]]; do
-	case "$1" in
-	--no-mpstat)
-		ENABLE_MPSTAT="false"
-		shift
-		;;
-	--interval)
-		if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
-			SAMPLE_INTERVAL="$2"
-			shift 2
-		else
-			ss::log_error "错误: --interval 需要指定数字参数"
-			exit 2
-		fi
-		;;
-	--count)
-		if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
-			SAMPLE_COUNT="$2"
-			shift 2
-		else
-			ss::log_error "错误: --count 需要指定数字参数"
-			exit 2
-		fi
-		;;
-	-h | --help)
-		ss::print_usage "$(basename "$0")" "CPU 与内存专项深度分析，兼容 Linux 与 macOS" "  --no-mpstat           禁用多核采样（Linux 下有效）
+    case "$1" in
+    --no-mpstat)
+        ENABLE_MPSTAT="false"
+        shift
+        ;;
+    --interval)
+        if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+            SAMPLE_INTERVAL="$2"
+            shift 2
+        else
+            ss::log_error "错误: --interval 需要指定数字参数"
+            exit 2
+        fi
+        ;;
+    --count)
+        if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+            SAMPLE_COUNT="$2"
+            shift 2
+        else
+            ss::log_error "错误: --count 需要指定数字参数"
+            exit 2
+        fi
+        ;;
+    -h | --help)
+        ss::print_usage "$(basename "$0")" "CPU 与内存专项深度分析，兼容 Linux 与 macOS" "  --no-mpstat           禁用多核采样（Linux 下有效）
   --interval N          采样间隔（秒，默认: 1）
   --count N             采样次数（默认: 3）"
-		exit 0
-		;;
-	*)
-		# 忽略其他参数
-		shift
-		;;
-	esac
+        exit 0
+        ;;
+    *)
+        # 忽略其他参数
+        shift
+        ;;
+    esac
 done
 
 # ==============================================================================
@@ -70,13 +70,13 @@ done
 # 集中定义平台相关命令，后续统一引用，避免散落的裸调用跨平台失效
 # ==============================================================================
 if [ "$OS_TYPE" = "Darwin" ]; then
-	# --- macOS: 使用 sysctl / vm_stat / top -l / ps ---
-	: # macOS 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
+    # --- macOS: 使用 sysctl / vm_stat / top -l / ps ---
+    : # macOS 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
 elif [ "$OS_TYPE" = "Linux" ]; then
-	# --- Linux: 使用 /proc、top -bn1、mpstat(可选) ---
-	: # Linux 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
+    # --- Linux: 使用 /proc、top -bn1、mpstat(可选) ---
+    : # Linux 专有命令在各章节内通过 command -v / OS_TYPE 判定选用
 else
-	echo "> ⚠️ 当前系统 ($OS_TYPE) 不是受支持的 Linux/macOS，部分功能可能不可用。" >&3
+    echo "> ⚠️ 当前系统 ($OS_TYPE) 不是受支持的 Linux/macOS，部分功能可能不可用。" >&3
 fi
 
 # 报告开始
@@ -244,13 +244,13 @@ else
     CORES=$logic_cores
 fi
 
-if command -v bc &> /dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] && \
-   [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
+if command -v bc &>/dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] &&
+    [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
     threshold_busy=$(echo "$CORES * 1.0" | bc -l)
     threshold_danger=$(echo "$CORES * 2.0" | bc -l)
-    if (( $(echo "$load1 > $threshold_danger" | bc -l) )); then
+    if (($(echo "$load1 > $threshold_danger" | bc -l))); then
         load_eval="🔴 危险"
-    elif (( $(echo "$load1 > $threshold_busy" | bc -l) )); then
+    elif (($(echo "$load1 > $threshold_busy" | bc -l))); then
         load_eval="🟡 繁忙"
     else
         load_eval="🟢 健康"
@@ -305,7 +305,7 @@ fi
 # 3. 多核 CPU 详细采样 (仅 Linux)
 # ==============================================================================
 
-if [ "$OS_TYPE" != "Darwin" ] && [ "$ENABLE_MPSTAT" = "true" ] && command -v mpstat &> /dev/null; then
+if [ "$OS_TYPE" != "Darwin" ] && [ "$ENABLE_MPSTAT" = "true" ] && command -v mpstat &>/dev/null; then
     ss::progress 3 12 "多核 CPU 详细采样 (mpstat)"
     echo "## 3. 多核 CPU 详细采样 (mpstat)"
     echo ""
@@ -395,8 +395,10 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     fi
 
     avail_num=$(echo "$avail_pct" | awk '{printf "%d", $1}')
-    if [ "$avail_num" -lt 10 ]; then mem_status="🔴 严重不足"
-    else mem_status="🟢 充足"
+    if [ "$avail_num" -lt 10 ]; then
+        mem_status="🔴 严重不足"
+    else
+        mem_status="🟢 充足"
     fi
 
     echo "| 指标 | 数值 (KB) | 人类可读 | 占比 | 状态 |"
@@ -434,9 +436,12 @@ else
     fi
 
     avail_num=$(echo "$avail_pct" | awk '{printf "%d", $1}')
-    if [ "$avail_num" -lt 5 ]; then mem_status="🔴 严重不足"
-    elif [ "$avail_num" -lt 10 ]; then mem_status="🟡 紧张"
-    else mem_status="🟢 充足"
+    if [ "$avail_num" -lt 5 ]; then
+        mem_status="🔴 严重不足"
+    elif [ "$avail_num" -lt 10 ]; then
+        mem_status="🟡 紧张"
+    else
+        mem_status="🟢 充足"
     fi
 
     echo "| 指标 | 数值 (KB) | 人类可读 | 占比 | 状态 |"
@@ -831,9 +836,12 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     if [ "$KERN_MAXFILES" != "N/A" ] && [ "$KERN_MAXFILES" -gt 0 ]; then
         file_pct=$(awk "BEGIN {printf \"%.2f\", $KERN_FILES/$KERN_MAXFILES*100}")
         pct_int=${file_pct%.*}
-        if [ "$pct_int" -gt 90 ]; then file_status="🔴 危险"
-        elif [ "$pct_int" -gt 80 ]; then file_status="🟡 偏高"
-        else file_status="🟢 正常"
+        if [ "$pct_int" -gt 90 ]; then
+            file_status="🔴 危险"
+        elif [ "$pct_int" -gt 80 ]; then
+            file_status="🟡 偏高"
+        else
+            file_status="🟢 正常"
         fi
     else
         file_pct="N/A"
@@ -858,9 +866,12 @@ else
 
     if [ "$file_max" -gt 0 ]; then
         file_pct=$(awk "BEGIN {printf \"%.2f\", $file_allocated/$file_max*100}")
-        if [ "${file_pct%.*}" -gt 80 ]; then file_status="🟡 偏高"
-        elif [ "${file_pct%.*}" -gt 90 ]; then file_status="🔴 危险"
-        else file_status="🟢 正常"
+        if [ "${file_pct%.*}" -gt 80 ]; then
+            file_status="🟡 偏高"
+        elif [ "${file_pct%.*}" -gt 90 ]; then
+            file_status="🔴 危险"
+        else
+            file_status="🟢 正常"
         fi
     else
         file_pct="N/A"
@@ -914,7 +925,7 @@ if [ "$OS_TYPE" != "Darwin" ]; then
     echo "| SUnreclaim | $sunreclaim | 不可回收 Slab |"
     echo ""
 
-    if command -v slabtop &> /dev/null; then
+    if command -v slabtop &>/dev/null; then
         echo "### Slab 占用 Top 10"
         echo ""
         echo "| 对象名 | 活跃数 | 总数量 | 单个大小 | 总大小 |"
@@ -935,10 +946,10 @@ echo "## 12. 负载趋势分析"
 echo ""
 
 echo "> **趋势判断:**"
-if command -v bc &> /dev/null && [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
-    if (( $(echo "$load1 > $load5" | bc -l) )) && (( $(echo "$load5 > $load15" | bc -l) )); then
+if command -v bc &>/dev/null && [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
+    if (($(echo "$load1 > $load5" | bc -l))) && (($(echo "$load5 > $load15" | bc -l))); then
         echo "> 📈 **负载呈上升趋势** — 系统越来越忙"
-    elif (( $(echo "$load1 < $load5" | bc -l) )) && (( $(echo "$load5 < $load15" | bc -l) )); then
+    elif (($(echo "$load1 < $load5" | bc -l))) && (($(echo "$load5 < $load15" | bc -l))); then
         echo "> 📉 **负载呈下降趋势** — 系统正在恢复"
     else
         echo "> ➡️ **负载相对平稳** — 无明显趋势"
@@ -950,8 +961,8 @@ echo ""
 
 echo "| 时间窗口 | 负载值 | 与核心数比值 |"
 echo "|----------|--------|--------------|"
-if command -v bc &> /dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] && \
-   [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
+if command -v bc &>/dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] &&
+    [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
     ratio1=$(printf "%.2f" "$(echo "scale=2; $load1 / $CORES" | bc -l)")
     ratio5=$(printf "%.2f" "$(echo "scale=2; $load5 / $CORES" | bc -l)")
     ratio15=$(printf "%.2f" "$(echo "scale=2; $load15 / $CORES" | bc -l)")
@@ -995,8 +1006,8 @@ ss::report_end "$REPORT_PATH"
 
 # JSON 输出
 if [ "$JSON_OUTPUT" = "true" ]; then
-	summary="CPU/内存深度分析完成"
-	ss::print_json_metadata "success" "$REPORT_PATH" "cpu_mem_analyzer.sh" 0 "$summary" ""
+    summary="CPU/内存深度分析完成"
+    ss::print_json_metadata "success" "$REPORT_PATH" "cpu_mem_analyzer.sh" 0 "$summary" ""
 fi
 
 # 显式退出码

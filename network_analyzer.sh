@@ -37,35 +37,35 @@ ss::parse_common_args "$@"
 # 脚本特定参数解析（解析 SCRIPT_ARGS 中剩余的参数）
 set -- "${SCRIPT_ARGS[@]}"
 while [[ $# -gt 0 ]]; do
-	case "$1" in
-	--ping-targets)
-		if [[ -n "$2" && "$2" != -* ]]; then
-			PING_TARGETS="$2"
-			shift 2
-		else
-			ss::log_error "错误: --ping-targets 需要指定目标参数"
-			exit 2
-		fi
-		;;
-	--dns-targets)
-		if [[ -n "$2" && "$2" != -* ]]; then
-			DNS_TARGETS="$2"
-			shift 2
-		else
-			ss::log_error "错误: --dns-targets 需要指定目标参数"
-			exit 2
-		fi
-		;;
-	-h | --help)
-		ss::print_usage "$(basename "$0")" "网络专项排查，采集接口、连通性、连接数、端口监听、DNS、丢包与延迟等" "  --ping-targets \"IP1 IP2\"  连通性探测目标（默认: 8.8.8.8 1.1.1.1）
+    case "$1" in
+    --ping-targets)
+        if [[ -n "$2" && "$2" != -* ]]; then
+            PING_TARGETS="$2"
+            shift 2
+        else
+            ss::log_error "错误: --ping-targets 需要指定目标参数"
+            exit 2
+        fi
+        ;;
+    --dns-targets)
+        if [[ -n "$2" && "$2" != -* ]]; then
+            DNS_TARGETS="$2"
+            shift 2
+        else
+            ss::log_error "错误: --dns-targets 需要指定目标参数"
+            exit 2
+        fi
+        ;;
+    -h | --help)
+        ss::print_usage "$(basename "$0")" "网络专项排查，采集接口、连通性、连接数、端口监听、DNS、丢包与延迟等" "  --ping-targets \"IP1 IP2\"  连通性探测目标（默认: 8.8.8.8 1.1.1.1）
   --dns-targets \"D1 D2\"      DNS 解析测试域名（默认: www.baidu.com www.google.com）"
-		exit 0
-		;;
-	*)
-		# 忽略其他参数
-		shift
-		;;
-	esac
+        exit 0
+        ;;
+    *)
+        # 忽略其他参数
+        shift
+        ;;
+    esac
 done
 
 # 报告开始
@@ -77,9 +77,9 @@ ss::report_begin "网络深度排查" 8
 echo "# 网络深度排查报告"
 echo ""
 if [ "$OS_TYPE" = "Darwin" ]; then
-	OS_NAME="$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null)"
+    OS_NAME="$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null)"
 else
-	OS_NAME="$(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo 'Linux')"
+    OS_NAME="$(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo 'Linux')"
 fi
 echo "> **主机名:** $(hostname)  "
 echo "> **采集时间:** $(date '+%Y-%m-%d %H:%M:%S')  "
@@ -98,31 +98,31 @@ echo "## 1. 网络接口信息"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-	echo "| 接口 | MAC | IP 地址 | 状态 | MTU |"
-	echo "|------|-----|---------|------|-----|"
-	for iface in $(ifconfig 2>/dev/null | grep -E '^[a-z0-9]+:' | awk -F: '{print $1}'); do
-		[ "$iface" = "lo0" ] && continue
-		mac=$(ifconfig "$iface" 2>/dev/null | awk '/ether/ {print $2; exit}')
-		ip=$(ifconfig "$iface" 2>/dev/null | awk '/inet / {print $2; exit}')
-		status=$(ifconfig "$iface" 2>/dev/null | awk -F': ' '/status/ {print $2; exit}')
-		[ "$status" = "active" ] && st="🟢 UP" || st="⚪ DOWN"
-		mtu=$(ifconfig "$iface" 2>/dev/null | awk -F': ' '/mtu/ {print $2; exit}')
-		printf "| %s | %s | %s | %s | %s |\n" "$iface" "${mac:-N/A}" "${ip:-N/A}" "$st" "${mtu:-N/A}"
-	done
-	echo ""
+    echo "| 接口 | MAC | IP 地址 | 状态 | MTU |"
+    echo "|------|-----|---------|------|-----|"
+    for iface in $(ifconfig 2>/dev/null | grep -E '^[a-z0-9]+:' | awk -F: '{print $1}'); do
+        [ "$iface" = "lo0" ] && continue
+        mac=$(ifconfig "$iface" 2>/dev/null | awk '/ether/ {print $2; exit}')
+        ip=$(ifconfig "$iface" 2>/dev/null | awk '/inet / {print $2; exit}')
+        status=$(ifconfig "$iface" 2>/dev/null | awk -F': ' '/status/ {print $2; exit}')
+        [ "$status" = "active" ] && st="🟢 UP" || st="⚪ DOWN"
+        mtu=$(ifconfig "$iface" 2>/dev/null | awk -F': ' '/mtu/ {print $2; exit}')
+        printf "| %s | %s | %s | %s | %s |\n" "$iface" "${mac:-N/A}" "${ip:-N/A}" "$st" "${mtu:-N/A}"
+    done
+    echo ""
 else
-	echo "| 接口 | MAC | IP 地址 | 状态 | MTU |"
-	echo "|------|-----|---------|------|-----|"
-	for iface in $(ls /sys/class/net 2>/dev/null); do
-		[ "$iface" = "lo" ] && continue
-		mac=$(cat /sys/class/net/$iface/address 2>/dev/null)
-		operstate=$(cat /sys/class/net/$iface/operstate 2>/dev/null)
-		[ "$operstate" = "up" ] && st="🟢 UP" || st="⚪ DOWN"
-		mtu=$(cat /sys/class/net/$iface/mtu 2>/dev/null)
-		ip=$(ip -4 addr show "$iface" 2>/dev/null | awk '/inet/ {print $2; exit}')
-		printf "| %s | %s | %s | %s | %s |\n" "$iface" "${mac:-N/A}" "${ip:-N/A}" "$st" "${mtu:-N/A}"
-	done
-	echo ""
+    echo "| 接口 | MAC | IP 地址 | 状态 | MTU |"
+    echo "|------|-----|---------|------|-----|"
+    for iface in $(ls /sys/class/net 2>/dev/null); do
+        [ "$iface" = "lo" ] && continue
+        mac=$(cat /sys/class/net/$iface/address 2>/dev/null)
+        operstate=$(cat /sys/class/net/$iface/operstate 2>/dev/null)
+        [ "$operstate" = "up" ] && st="🟢 UP" || st="⚪ DOWN"
+        mtu=$(cat /sys/class/net/$iface/mtu 2>/dev/null)
+        ip=$(ip -4 addr show "$iface" 2>/dev/null | awk '/inet/ {print $2; exit}')
+        printf "| %s | %s | %s | %s | %s |\n" "$iface" "${mac:-N/A}" "${ip:-N/A}" "$st" "${mtu:-N/A}"
+    done
+    echo ""
 fi
 
 # ==============================================================================
@@ -133,25 +133,25 @@ echo "## 2. 路由与默认网关"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-	echo "### 路由表 (netstat -rn)"
-	echo ""
-	echo '```'
-	netstat -rn 2>/dev/null | head -40
-	echo '```'
-	gw=$(netstat -rn 2>/dev/null | awk '/default/ {print $2; exit}')
+    echo "### 路由表 (netstat -rn)"
+    echo ""
+    echo '```'
+    netstat -rn 2>/dev/null | head -40
+    echo '```'
+    gw=$(netstat -rn 2>/dev/null | awk '/default/ {print $2; exit}')
 else
-	echo "### 路由表 (ip route)"
-	echo ""
-	echo '```'
-	ip route 2>/dev/null | head -40
-	echo '```'
-	gw=$(ip route 2>/dev/null | awk '/default/ {print $3; exit}')
+    echo "### 路由表 (ip route)"
+    echo ""
+    echo '```'
+    ip route 2>/dev/null | head -40
+    echo '```'
+    gw=$(ip route 2>/dev/null | awk '/default/ {print $3; exit}')
 fi
 echo ""
 if [ -n "$gw" ]; then
-	echo "> **默认网关:** \`$gw\`"
+    echo "> **默认网关:** \`$gw\`"
 else
-	echo "> ⚠️ **未检测到默认网关**，本机可能无法访问外部网络"
+    echo "> ⚠️ **未检测到默认网关**，本机可能无法访问外部网络"
 fi
 echo ""
 
@@ -167,46 +167,46 @@ echo "| 目标 | 是否可达 | 丢包率 | 最小(ms) | 平均(ms) | 最大(ms)
 echo "|------|----------|--------|----------|----------|----------|"
 
 for target in $PING_TARGETS; do
-	if [ "$OS_TYPE" = "Darwin" ]; then
-		# macOS ping: -c 5 发5个包, -t 超时
-		result=$(ss::run_with_timeout $((PING_TIMEOUT * 5 + 2)) ping -c 5 -t $PING_TIMEOUT "$target" 2>/dev/null)
-	else
-		result=$(ss::run_with_timeout $((PING_TIMEOUT * 5 + 2)) ping -c 5 -W $PING_TIMEOUT "$target" 2>/dev/null)
-	fi
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        # macOS ping: -c 5 发5个包, -t 超时
+        result=$(ss::run_with_timeout $((PING_TIMEOUT * 5 + 2)) ping -c 5 -t $PING_TIMEOUT "$target" 2>/dev/null)
+    else
+        result=$(ss::run_with_timeout $((PING_TIMEOUT * 5 + 2)) ping -c 5 -W $PING_TIMEOUT "$target" 2>/dev/null)
+    fi
 
-	if [ -z "$result" ]; then
-		printf "| %s | 🔴 不可达 | - | - | - | - |\n" "$target"
-		continue
-	fi
+    if [ -z "$result" ]; then
+        printf "| %s | 🔴 不可达 | - | - | - | - |\n" "$target"
+        continue
+    fi
 
-	if [ "$OS_TYPE" = "Darwin" ]; then
-		# macOS 输出: "5 packets transmitted, 0 packets received, 100.0% packet loss"
-		# "round-trip min/avg/max/stddev = 10.1/12.3/15.6/1.2 ms"
-		loss=$(echo "$result" | grep "packet loss" | awk -F', ' '{print $3}' | awk '{print $1}')
-		rt=$(echo "$result" | grep "round-trip" | awk -F'= ' '{print $2}')
-		min=$(echo "$rt" | awk -F'/' '{print $1}')
-		avg=$(echo "$rt" | awk -F'/' '{print $2}')
-		max=$(echo "$rt" | awk -F'/' '{print $3}')
-	else
-		# Linux 输出: "5 packets transmitted, 5 received, 0% packet loss, time ..."
-		# "rtt min/avg/max/mdev = 10.1/12.3/15.6/1.2 ms"
-		loss=$(echo "$result" | grep "packet loss" | awk -F', ' '{print $3}' | awk '{print $1}')
-		rt=$(echo "$result" | grep "rtt" | awk -F'= ' '{print $2}')
-		min=$(echo "$rt" | awk -F'/' '{print $1}')
-		avg=$(echo "$rt" | awk -F'/' '{print $2}')
-		max=$(echo "$rt" | awk -F'/' '{print $3}')
-	fi
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        # macOS 输出: "5 packets transmitted, 0 packets received, 100.0% packet loss"
+        # "round-trip min/avg/max/stddev = 10.1/12.3/15.6/1.2 ms"
+        loss=$(echo "$result" | grep "packet loss" | awk -F', ' '{print $3}' | awk '{print $1}')
+        rt=$(echo "$result" | grep "round-trip" | awk -F'= ' '{print $2}')
+        min=$(echo "$rt" | awk -F'/' '{print $1}')
+        avg=$(echo "$rt" | awk -F'/' '{print $2}')
+        max=$(echo "$rt" | awk -F'/' '{print $3}')
+    else
+        # Linux 输出: "5 packets transmitted, 5 received, 0% packet loss, time ..."
+        # "rtt min/avg/max/mdev = 10.1/12.3/15.6/1.2 ms"
+        loss=$(echo "$result" | grep "packet loss" | awk -F', ' '{print $3}' | awk '{print $1}')
+        rt=$(echo "$result" | grep "rtt" | awk -F'= ' '{print $2}')
+        min=$(echo "$rt" | awk -F'/' '{print $1}')
+        avg=$(echo "$rt" | awk -F'/' '{print $2}')
+        max=$(echo "$rt" | awk -F'/' '{print $3}')
+    fi
 
-	loss_num=$(echo "$loss" | sed 's/%//')
-	if [ -n "$loss_num" ] && [ "$(echo "$loss_num > 20" | bc 2>/dev/null || echo 0)" = "1" ]; then
-		reach="🔴 严重丢包"
-	elif [ -n "$loss_num" ] && [ "$(echo "$loss_num > 0" | bc 2>/dev/null || echo 0)" = "1" ]; then
-		reach="🟡 轻微丢包"
-	else
-		reach="🟢 正常"
-	fi
+    loss_num=$(echo "$loss" | sed 's/%//')
+    if [ -n "$loss_num" ] && [ "$(echo "$loss_num > 20" | bc 2>/dev/null || echo 0)" = "1" ]; then
+        reach="🔴 严重丢包"
+    elif [ -n "$loss_num" ] && [ "$(echo "$loss_num > 0" | bc 2>/dev/null || echo 0)" = "1" ]; then
+        reach="🟡 轻微丢包"
+    else
+        reach="🟢 正常"
+    fi
 
-	printf "| %s | %s | %s | %s | %s | %s |\n" "$target" "$reach" "${loss:-N/A}" "${min:-N/A}" "${avg:-N/A}" "${max:-N/A}"
+    printf "| %s | %s | %s | %s | %s | %s |\n" "$target" "$reach" "${loss:-N/A}" "${min:-N/A}" "${avg:-N/A}" "${max:-N/A}"
 done
 echo ""
 
@@ -218,31 +218,31 @@ echo "## 4. 监听端口与服务"
 echo ""
 
 if command -v ss >/dev/null 2>&1 && [ "$OS_TYPE" != "Darwin" ]; then
-	echo "| 协议 | 本地地址:端口 | 进程 |"
-	echo "|------|---------------|------|"
-	ss -tulnp 2>/dev/null | tail -n +2 | while read -r proto recvq sendq local foreign state pid prog; do
-		printf "| %s | %s | %s |\n" "$proto" "$local" "${prog:-N/A}"
-	done
-	echo ""
+    echo "| 协议 | 本地地址:端口 | 进程 |"
+    echo "|------|---------------|------|"
+    ss -tulnp 2>/dev/null | tail -n +2 | while read -r proto recvq sendq local foreign state pid prog; do
+        printf "| %s | %s | %s |\n" "$proto" "$local" "${prog:-N/A}"
+    done
+    echo ""
 elif command -v netstat >/dev/null 2>&1; then
-	echo "| 协议 | 本地地址:端口 | 进程 |"
-	echo "|------|---------------|------|"
-	if [ "$OS_TYPE" = "Darwin" ]; then
-		netstat -an -p tcp 2>/dev/null | grep LISTEN | while read -r proto recvq sendq local foreign state; do
-			printf "| %s | %s | %s |\n" "$proto" "$local" "N/A"
-		done
-		netstat -an -p udp 2>/dev/null | grep -v "Address" | awk '$6=="*.{*}" || $6!="0.0.0.0:*"' | head -20 | while read -r proto recvq sendq local foreign state; do
-			printf "| %s | %s | %s |\n" "$proto" "$local" "N/A"
-		done
-	else
-		netstat -tulnp 2>/dev/null | tail -n +3 | while read -r proto recvq sendq local foreign state pid prog; do
-			printf "| %s | %s | %s |\n" "$proto" "$local" "${prog:-N/A}"
-		done
-	fi
-	echo ""
+    echo "| 协议 | 本地地址:端口 | 进程 |"
+    echo "|------|---------------|------|"
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        netstat -an -p tcp 2>/dev/null | grep LISTEN | while read -r proto recvq sendq local foreign state; do
+            printf "| %s | %s | %s |\n" "$proto" "$local" "N/A"
+        done
+        netstat -an -p udp 2>/dev/null | grep -v "Address" | awk '$6=="*.{*}" || $6!="0.0.0.0:*"' | head -20 | while read -r proto recvq sendq local foreign state; do
+            printf "| %s | %s | %s |\n" "$proto" "$local" "N/A"
+        done
+    else
+        netstat -tulnp 2>/dev/null | tail -n +3 | while read -r proto recvq sendq local foreign state pid prog; do
+            printf "| %s | %s | %s |\n" "$proto" "$local" "${prog:-N/A}"
+        done
+    fi
+    echo ""
 else
-	echo "> ⚠️ 未找到 ss/netstat 工具，无法列举监听端口"
-	echo ""
+    echo "> ⚠️ 未找到 ss/netstat 工具，无法列举监听端口"
+    echo ""
 fi
 
 # ==============================================================================
@@ -253,34 +253,34 @@ echo "## 5. 活跃连接与连接数统计"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-	conn_out=$(netstat -an 2>/dev/null)
+    conn_out=$(netstat -an 2>/dev/null)
 else
-	conn_out=$(ss -an 2>/dev/null)
+    conn_out=$(ss -an 2>/dev/null)
 fi
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-	total_conn=$(echo "$conn_out" | grep -E '^(tcp|udp)' | wc -l | tr -d ' ')
-	est=$(echo "$conn_out" | grep -i "ESTABLISHED" | wc -l | tr -d ' ')
-	time_wait=$(echo "$conn_out" | grep -i "TIME_WAIT" | wc -l | tr -d ' ')
-	close_wait=$(echo "$conn_out" | grep -i "CLOSE_WAIT" | wc -l | tr -d ' ')
-	fin_wait=$(echo "$conn_out" | grep -iE "FIN_WAIT" | wc -l | tr -d ' ')
+    total_conn=$(echo "$conn_out" | grep -E '^(tcp|udp)' | wc -l | tr -d ' ')
+    est=$(echo "$conn_out" | grep -i "ESTABLISHED" | wc -l | tr -d ' ')
+    time_wait=$(echo "$conn_out" | grep -i "TIME_WAIT" | wc -l | tr -d ' ')
+    close_wait=$(echo "$conn_out" | grep -i "CLOSE_WAIT" | wc -l | tr -d ' ')
+    fin_wait=$(echo "$conn_out" | grep -iE "FIN_WAIT" | wc -l | tr -d ' ')
 else
-	total_conn=$(echo "$conn_out" | grep -E '^(tcp|udp)' | wc -l | tr -d ' ')
-	est=$(echo "$conn_out" | grep -i "ESTAB" | wc -l | tr -d ' ')
-	time_wait=$(echo "$conn_out" | grep -i "TIME-WAIT" | wc -l | tr -d ' ')
-	close_wait=$(echo "$conn_out" | grep -i "CLOSE-WAIT" | wc -l | tr -d ' ')
-	fin_wait=$(echo "$conn_out" | grep -iE "FIN-WAIT" | wc -l | tr -d ' ')
+    total_conn=$(echo "$conn_out" | grep -E '^(tcp|udp)' | wc -l | tr -d ' ')
+    est=$(echo "$conn_out" | grep -i "ESTAB" | wc -l | tr -d ' ')
+    time_wait=$(echo "$conn_out" | grep -i "TIME-WAIT" | wc -l | tr -d ' ')
+    close_wait=$(echo "$conn_out" | grep -i "CLOSE-WAIT" | wc -l | tr -d ' ')
+    fin_wait=$(echo "$conn_out" | grep -iE "FIN-WAIT" | wc -l | tr -d ' ')
 fi
 
 # 连接数压力判定
 conn_status="🟢 正常"
 conn_note="TCP 连接状态分布正常"
 if [ "$close_wait" -gt 100 ]; then
-	conn_status="🔴 异常"
-	conn_note="CLOSE_WAIT 高达 ${close_wait}，存在连接未正确释放（代码 Bug / 服务假死）"
+    conn_status="🔴 异常"
+    conn_note="CLOSE_WAIT 高达 ${close_wait}，存在连接未正确释放（代码 Bug / 服务假死）"
 elif [ "$time_wait" -gt 10000 ]; then
-	conn_status="🟡 偏高"
-	conn_note="TIME_WAIT 高达 ${time_wait}，可能需调整 tcp_tw_reuse 等内核参数"
+    conn_status="🟡 偏高"
+    conn_note="TIME_WAIT 高达 ${time_wait}，可能需调整 tcp_tw_reuse 等内核参数"
 fi
 
 echo "| 指标 | 数量 | 状态 |"
@@ -299,13 +299,13 @@ echo ""
 echo "### 外部连接 Top10 (按远程 IP)"
 echo ""
 if [ "$OS_TYPE" = "Darwin" ]; then
-	echo "$conn_out" | grep -iE "ESTABLISHED" | awk '{print $5}' | grep -oE '^[0-9.]+' | sort | uniq -c | sort -rn | head -10 | while read -r cnt ip; do
-		printf "| %s | %s |\n" "$ip" "$cnt"
-	done
+    echo "$conn_out" | grep -iE "ESTABLISHED" | awk '{print $5}' | grep -oE '^[0-9.]+' | sort | uniq -c | sort -rn | head -10 | while read -r cnt ip; do
+        printf "| %s | %s |\n" "$ip" "$cnt"
+    done
 else
-	echo "$conn_out" | grep -iE "ESTAB" | awk '{print $5}' | grep -oE '^[0-9.]+' | sort | uniq -c | sort -rn | head -10 | while read -r cnt ip; do
-		printf "| %s | %s |\n" "$ip" "$cnt"
-	done
+    echo "$conn_out" | grep -iE "ESTAB" | awk '{print $5}' | grep -oE '^[0-9.]+' | sort | uniq -c | sort -rn | head -10 | while read -r cnt ip; do
+        printf "| %s | %s |\n" "$ip" "$cnt"
+    done
 fi
 echo ""
 echo "| 远程 IP | 连接数 |"
@@ -321,9 +321,9 @@ echo ""
 
 # 当前 DNS 服务器
 if [ "$OS_TYPE" = "Darwin" ]; then
-	dns_servers=$(scutil --dns 2>/dev/null | grep "nameserver\[" | awk '{print $3}' | sort -u | tr '\n' ' ')
+    dns_servers=$(scutil --dns 2>/dev/null | grep "nameserver\[" | awk '{print $3}' | sort -u | tr '\n' ' ')
 else
-	dns_servers=$(awk '/^nameserver/ {print $2}' /etc/resolv.conf 2>/dev/null | tr '\n' ' ')
+    dns_servers=$(awk '/^nameserver/ {print $2}' /etc/resolv.conf 2>/dev/null | tr '\n' ' ')
 fi
 echo "> **当前 DNS 服务器:** ${dns_servers:-N/A}"
 echo ""
@@ -331,21 +331,21 @@ echo ""
 echo "| 域名 | 解析结果 | 耗时(ms) | 状态 |"
 echo "|------|----------|----------|------|"
 for domain in $DNS_TARGETS; do
-	start_ts=$(date +%s%3N 2>/dev/null || date +%s)
-	if command -v dig >/dev/null 2>&1; then
-		resolved=$(dig +short +time=2 +tries=1 "$domain" 2>/dev/null | head -1)
-	elif command -v getent >/dev/null 2>&1; then
-		resolved=$(getent hosts "$domain" 2>/dev/null | awk '{print $1; exit}')
-	else
-		resolved=""
-	fi
-	end_ts=$(date +%s%3N 2>/dev/null || date +%s)
-	cost=$((end_ts - start_ts))
-	if [ -n "$resolved" ]; then
-		printf "| %s | %s | %s | 🟢 正常 |\n" "$domain" "$resolved" "$cost"
-	else
-		printf "| %s | 解析失败 | %s | 🔴 失败 |\n" "$domain" "$cost"
-	fi
+    start_ts=$(date +%s%3N 2>/dev/null || date +%s)
+    if command -v dig >/dev/null 2>&1; then
+        resolved=$(dig +short +time=2 +tries=1 "$domain" 2>/dev/null | head -1)
+    elif command -v getent >/dev/null 2>&1; then
+        resolved=$(getent hosts "$domain" 2>/dev/null | awk '{print $1; exit}')
+    else
+        resolved=""
+    fi
+    end_ts=$(date +%s%3N 2>/dev/null || date +%s)
+    cost=$((end_ts - start_ts))
+    if [ -n "$resolved" ]; then
+        printf "| %s | %s | %s | 🟢 正常 |\n" "$domain" "$resolved" "$cost"
+    else
+        printf "| %s | 解析失败 | %s | 🔴 失败 |\n" "$domain" "$cost"
+    fi
 done
 echo ""
 
@@ -357,10 +357,10 @@ echo "## 7. 网卡流量统计"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-	# macOS 通过 netstat -ib 获取每接口收发统计
-	echo "| 接口 | 接收包 | 发送包 | 接收字节 | 发送字节 | 错误/丢包 |"
-	echo "|------|--------|--------|----------|----------|-----------|"
-	netstat -ib 2>/dev/null | awk 'NR>1 && $1!="Name" && $1!~/(lo|gif|stf|bridge|vnic)/ {
+    # macOS 通过 netstat -ib 获取每接口收发统计
+    echo "| 接口 | 接收包 | 发送包 | 接收字节 | 发送字节 | 错误/丢包 |"
+    echo "|------|--------|--------|----------|----------|-----------|"
+    netstat -ib 2>/dev/null | awk 'NR>1 && $1!="Name" && $1!~/(lo|gif|stf|bridge|vnic)/ {
         iface=$1
         rx_pkt=$5; tx_pkt=$6
         rx_byte=$7; tx_byte=$8
@@ -368,24 +368,29 @@ if [ "$OS_TYPE" = "Darwin" ]; then
         err=$9
         printf "| %s | %s | %s | %s | %s | %s |\n", iface, rx_pkt, tx_pkt, rx_byte, tx_byte, err
     }' | head -20
-	echo ""
-	echo "> ℹ️ macOS 不提供 /proc/net/dev 等价物，流量为累计值（重启后清零）"
-	echo ""
+    echo ""
+    echo "> ℹ️ macOS 不提供 /proc/net/dev 等价物，流量为累计值（重启后清零）"
+    echo ""
 else
-	echo "| 接口 | 接收包 | 发送包 | 接收字节 | 发送字节 | 收错 | 发包丢 |"
-	echo "|------|--------|--------|----------|----------|------|--------|"
-	while read -r iface rest; do
-		[ "$iface" = "Inter-|" ] && continue
-		iface=${iface%:}
-		[ "$iface" = "lo" ] && continue
-		set -- $rest
-		# /proc/net/dev 列: rx_bytes rx_packets rx_err rx_drop ... tx_bytes tx_packets ...
-		rx_bytes=$1; rx_pkts=$2; rx_err=$3; rx_drop=$4
-		tx_bytes=$9; tx_pkts=${10}; tx_drop=${11}
-		printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
-			"$iface" "$rx_pkts" "$tx_pkts" "$(ss::hr_bytes $rx_bytes)" "$(ss::hr_bytes $tx_bytes)" "$rx_err" "$tx_drop"
-	done < /proc/net/dev
-	echo ""
+    echo "| 接口 | 接收包 | 发送包 | 接收字节 | 发送字节 | 收错 | 发包丢 |"
+    echo "|------|--------|--------|----------|----------|------|--------|"
+    while read -r iface rest; do
+        [ "$iface" = "Inter-|" ] && continue
+        iface=${iface%:}
+        [ "$iface" = "lo" ] && continue
+        set -- $rest
+        # /proc/net/dev 列: rx_bytes rx_packets rx_err rx_drop ... tx_bytes tx_packets ...
+        rx_bytes=$1
+        rx_pkts=$2
+        rx_err=$3
+        rx_drop=$4
+        tx_bytes=$9
+        tx_pkts=${10}
+        tx_drop=${11}
+        printf "| %s | %s | %s | %s | %s | %s | %s |\n" \
+            "$iface" "$rx_pkts" "$tx_pkts" "$(ss::hr_bytes $rx_bytes)" "$(ss::hr_bytes $tx_bytes)" "$rx_err" "$tx_drop"
+    done </proc/net/dev
+    echo ""
 fi
 
 # ==============================================================================
@@ -396,27 +401,27 @@ echo "## 8. 网络内核参数"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-	echo "> ℹ️ macOS 网络参数与 Linux 差异较大（sysctl net.inet.tcp.*），此处仅展示关键项"
-	echo ""
-	echo "| 参数 | 值 |"
-	echo "|------|-----|"
-	echo "| net.inet.tcp.msl | $(ss::read_sysctl net.inet.tcp.msl) |"
-	echo "| kern.ipc.somaxconn | $(ss::read_sysctl kern.ipc.somaxconn) |"
-	echo ""
+    echo "> ℹ️ macOS 网络参数与 Linux 差异较大（sysctl net.inet.tcp.*），此处仅展示关键项"
+    echo ""
+    echo "| 参数 | 值 |"
+    echo "|------|-----|"
+    echo "| net.inet.tcp.msl | $(ss::read_sysctl net.inet.tcp.msl) |"
+    echo "| kern.ipc.somaxconn | $(ss::read_sysctl kern.ipc.somaxconn) |"
+    echo ""
 else
-	echo "| 参数 | 值 | 说明 |"
-	echo "|------|-----|------|"
-	tw_reuse=$(cat /proc/sys/net/ipv4/tcp_tw_reuse 2>/dev/null)
-	tw_recycle=$(cat /proc/sys/net/ipv4/tcp_tw_recycle 2>/dev/null || echo "N/A(新内核已移除)")
-	somaxconn=$(cat /proc/sys/net/core/somaxconn 2>/dev/null)
-	max_conn=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || cat /proc/sys/net/nf_conntrack_max 2>/dev/null || echo "N/A")
-	echo "| net.ipv4.tcp_tw_reuse | ${tw_reuse:-N/A} | 1=快速复用 TIME_WAIT 端口 |"
-	echo "| net.ipv4.tcp_tw_recycle | ${tw_recycle} | 已废弃，建议保持 0 |"
-	echo "| net.core.somaxconn | ${somaxconn:-N/A} | 单监听套接字全连接队列上限 |"
-	echo "| nf_conntrack_max | ${max_conn} | 连接跟踪表上限（NAT 场景关键） |"
-	echo ""
-	echo "> 💡 若 TIME_WAIT 偏高，可将 \`tcp_tw_reuse=1\`；若 CLOSE_WAIT 偏高，需排查应用层连接释放逻辑。"
-	echo ""
+    echo "| 参数 | 值 | 说明 |"
+    echo "|------|-----|------|"
+    tw_reuse=$(cat /proc/sys/net/ipv4/tcp_tw_reuse 2>/dev/null)
+    tw_recycle=$(cat /proc/sys/net/ipv4/tcp_tw_recycle 2>/dev/null || echo "N/A(新内核已移除)")
+    somaxconn=$(cat /proc/sys/net/core/somaxconn 2>/dev/null)
+    max_conn=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || cat /proc/sys/net/nf_conntrack_max 2>/dev/null || echo "N/A")
+    echo "| net.ipv4.tcp_tw_reuse | ${tw_reuse:-N/A} | 1=快速复用 TIME_WAIT 端口 |"
+    echo "| net.ipv4.tcp_tw_recycle | ${tw_recycle} | 已废弃，建议保持 0 |"
+    echo "| net.core.somaxconn | ${somaxconn:-N/A} | 单监听套接字全连接队列上限 |"
+    echo "| nf_conntrack_max | ${max_conn} | 连接跟踪表上限（NAT 场景关键） |"
+    echo ""
+    echo "> 💡 若 TIME_WAIT 偏高，可将 \`tcp_tw_reuse=1\`；若 CLOSE_WAIT 偏高，需排查应用层连接释放逻辑。"
+    echo ""
 fi
 
 # ==============================================================================
@@ -445,8 +450,8 @@ ss::report_end "$REPORT_PATH"
 
 # JSON 输出
 if [ "$JSON_OUTPUT" = "true" ]; then
-	summary="网络接口与连通性分析完成"
-	ss::print_json_metadata "success" "$REPORT_PATH" "network_analyzer.sh" 0 "$summary" ""
+    summary="网络接口与连通性分析完成"
+    ss::print_json_metadata "success" "$REPORT_PATH" "network_analyzer.sh" 0 "$summary" ""
 fi
 
 # 显式退出码

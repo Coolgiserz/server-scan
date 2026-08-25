@@ -21,66 +21,66 @@ REPORT_PATH="${REPORT_PATH:-}"
 # 通过全局数组 SCRIPT_ARGS 返回剩余参数
 # ------------------------------------------------------------------------------
 ss::parse_common_args() {
-	local args=("$@")
-	local i=0
-	SCRIPT_ARGS=()
+    local args=("$@")
+    local i=0
+    SCRIPT_ARGS=()
 
-	while [ $i -lt ${#args[@]} ]; do
-		case "${args[$i]}" in
-		-o | --output)
-			if [ $((i + 1)) -lt ${#args[@]} ] && [[ "${args[$((i + 1))]}" != -* ]]; then
-				REPORT_PATH="${args[$((i + 1))]}"
-				i=$((i + 2))
-			else
-				ss::log_error "错误: -o/--output 需要指定路径参数"
-				exit 2
-			fi
-			;;
-		-c | --config)
-			if [ $((i + 1)) -lt ${#args[@]} ] && [[ "${args[$((i + 1))]}" != -* ]]; then
-				CONFIG_FILE="${args[$((i + 1))]}"
-				i=$((i + 2))
-			else
-				ss::log_error "错误: -c/--config 需要指定配置文件路径"
-				exit 2
-			fi
-			;;
-		-q | --quiet)
-			QUIET="true"
-			i=$((i + 1))
-			;;
-		--json)
-			JSON_OUTPUT="true"
-			QUIET="true" # JSON 模式隐含静默模式
-			i=$((i + 1))
-			;;
-		--no-color)
-			NO_COLOR="true"
-			i=$((i + 1))
-			;;
-		-h | --help)
-			# 将 -h/--help 传递给脚本，让脚本在显示帮助时包含脚本特定选项
-			SCRIPT_ARGS+=("${args[$i]}")
-			i=$((i + 1))
-			;;
-		*)
-			# 脚本特有参数，保留给脚本自己解析
-			SCRIPT_ARGS+=("${args[$i]}")
-			i=$((i + 1))
-			;;
-		esac
-	done
+    while [ $i -lt ${#args[@]} ]; do
+        case "${args[$i]}" in
+        -o | --output)
+            if [ $((i + 1)) -lt ${#args[@]} ] && [[ "${args[$((i + 1))]}" != -* ]]; then
+                REPORT_PATH="${args[$((i + 1))]}"
+                i=$((i + 2))
+            else
+                ss::log_error "错误: -o/--output 需要指定路径参数"
+                exit 2
+            fi
+            ;;
+        -c | --config)
+            if [ $((i + 1)) -lt ${#args[@]} ] && [[ "${args[$((i + 1))]}" != -* ]]; then
+                CONFIG_FILE="${args[$((i + 1))]}"
+                i=$((i + 2))
+            else
+                ss::log_error "错误: -c/--config 需要指定配置文件路径"
+                exit 2
+            fi
+            ;;
+        -q | --quiet)
+            QUIET="true"
+            i=$((i + 1))
+            ;;
+        --json)
+            JSON_OUTPUT="true"
+            QUIET="true" # JSON 模式隐含静默模式
+            i=$((i + 1))
+            ;;
+        --no-color)
+            NO_COLOR="true"
+            i=$((i + 1))
+            ;;
+        -h | --help)
+            # 将 -h/--help 传递给脚本，让脚本在显示帮助时包含脚本特定选项
+            SCRIPT_ARGS+=("${args[$i]}")
+            i=$((i + 1))
+            ;;
+        *)
+            # 脚本特有参数，保留给脚本自己解析
+            SCRIPT_ARGS+=("${args[$i]}")
+            i=$((i + 1))
+            ;;
+        esac
+    done
 }
 
 # ------------------------------------------------------------------------------
 # 打印使用说明（模板）
 # ------------------------------------------------------------------------------
 ss::print_usage() {
-	local script_name="$1"
-	local script_description="$2"
-	local script_specific_options="$3"
+    local script_name="$1"
+    local script_description="$2"
+    local script_specific_options="$3"
 
-	cat <<EOF
+    cat <<EOF
 用法: $script_name [选项]
 
 $script_description
@@ -115,25 +115,25 @@ EOF
 # 打印 JSON 元数据
 # ------------------------------------------------------------------------------
 ss::print_json_metadata() {
-	local status="$1"
-	local report_path="$2"
-	local script_name="$3"
-	local duration_sec="$4"
-	local summary="$5"
-	local bottlenecks="$6"
+    local status="$1"
+    local report_path="$2"
+    local script_name="$3"
+    local duration_sec="$4"
+    local summary="$5"
+    local bottlenecks="$6"
 
-	local timestamp
-	timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-	local hostname
-	hostname=$(hostname)
+    local timestamp
+    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local hostname
+    hostname=$(hostname)
 
-	# 转义 JSON 字符串
-	report_path=$(ss::json_escape "$report_path")
-	script_name=$(ss::json_escape "$script_name")
-	summary=$(ss::json_escape "$summary")
-	bottlenecks=$(ss::json_escape "$bottlenecks")
+    # 转义 JSON 字符串
+    report_path=$(ss::json_escape "$report_path")
+    script_name=$(ss::json_escape "$script_name")
+    summary=$(ss::json_escape "$summary")
+    bottlenecks=$(ss::json_escape "$bottlenecks")
 
-	cat <<EOF
+    cat <<EOF
 {
   "status": "$status",
   "report_path": "$report_path",
@@ -151,9 +151,9 @@ EOF
 # 打印脚本特定使用说明
 # ------------------------------------------------------------------------------
 ss::print_script_usage() {
-	local script_name="$1"
-	local script_description="$2"
-	local script_specific_options="$3"
+    local script_name="$1"
+    local script_description="$2"
+    local script_specific_options="$3"
 
-	ss::print_usage "$script_name" "$script_description" "$script_specific_options"
+    ss::print_usage "$script_name" "$script_description" "$script_specific_options"
 }

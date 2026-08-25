@@ -12,12 +12,12 @@ repos:
       - id: shellcheck
         args: ["--severity=warning"]
 
-  # Shell 格式化检查（统一代码风格）
+  # Shell 格式化（统一代码风格，自动格式化）
   - repo: https://github.com/pecigonzalo/pre-commit-shfmt
     rev: v2.2.0
     hooks:
       - id: shell-fmt
-        args: ["-i", "4", "-d"]  # 4 空格缩进，仅检查不自动修改
+        args: ["-i", "4"]  # 4 空格缩进，自动格式化
 
   # 通用检查
   - repo: https://github.com/pre-commit/pre-commit-hooks

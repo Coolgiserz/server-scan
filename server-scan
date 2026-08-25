@@ -18,7 +18,7 @@ VERSION="1.0.0"
 # 帮助信息
 # ==============================================================================
 print_help() {
-	cat <<EOF
+    cat <<EOF
 用法: server-scan <子命令> [选项]
 
 服务器性能诊断工具集，提供一站式系统瓶颈分析。
@@ -59,37 +59,37 @@ print_help() {
   server-scan all
 
 EOF
-	exit 0
+    exit 0
 }
 
 # ==============================================================================
 # 版本信息
 # ==============================================================================
 print_version() {
-	echo "server-scan version $VERSION"
-	exit 0
+    echo "server-scan version $VERSION"
+    exit 0
 }
 
 # ==============================================================================
 # 检查子命令是否存在
 # ==============================================================================
 check_script() {
-	local script_name="$1"
-	local script_path="$SCRIPT_DIR/$script_name"
-	if [ ! -f "$script_path" ]; then
-		echo "错误: 找不到脚本 $script_path" >&2
-		exit 1
-	fi
-	if [ ! -x "$script_path" ]; then
-		chmod +x "$script_path"
-	fi
+    local script_name="$1"
+    local script_path="$SCRIPT_DIR/$script_name"
+    if [ ! -f "$script_path" ]; then
+        echo "错误: 找不到脚本 $script_path" >&2
+        exit 1
+    fi
+    if [ ! -x "$script_path" ]; then
+        chmod +x "$script_path"
+    fi
 }
 
 # ==============================================================================
 # 主入口
 # ==============================================================================
 if [ $# -eq 0 ]; then
-	print_help
+    print_help
 fi
 
 SUBCOMMAND="$1"
@@ -98,87 +98,87 @@ shift
 # 处理顶层选项
 case "$SUBCOMMAND" in
 -h | --help)
-	print_help
-	;;
+    print_help
+    ;;
 -v | --version)
-	print_version
-	;;
+    print_version
+    ;;
 esac
 
 # 执行子命令
 case "$SUBCOMMAND" in
 overview)
-	check_script "sys_overview.sh"
-	exec "$SCRIPT_DIR/sys_overview.sh" "$@"
-	;;
+    check_script "sys_overview.sh"
+    exec "$SCRIPT_DIR/sys_overview.sh" "$@"
+    ;;
 cpu-mem)
-	check_script "cpu_mem_analyzer.sh"
-	exec "$SCRIPT_DIR/cpu_mem_analyzer.sh" "$@"
-	;;
+    check_script "cpu_mem_analyzer.sh"
+    exec "$SCRIPT_DIR/cpu_mem_analyzer.sh" "$@"
+    ;;
 disk)
-	check_script "disk_analyzer.sh"
-	exec "$SCRIPT_DIR/disk_analyzer.sh" "$@"
-	;;
+    check_script "disk_analyzer.sh"
+    exec "$SCRIPT_DIR/disk_analyzer.sh" "$@"
+    ;;
 network)
-	check_script "network_analyzer.sh"
-	exec "$SCRIPT_DIR/network_analyzer.sh" "$@"
-	;;
+    check_script "network_analyzer.sh"
+    exec "$SCRIPT_DIR/network_analyzer.sh" "$@"
+    ;;
 all)
-	echo "🚀 开始执行所有诊断脚本..."
-	echo ""
+    echo "🚀 开始执行所有诊断脚本..."
+    echo ""
 
-	# 传递公共选项给每个脚本（处理空参数情况）
-	if [ $# -gt 0 ]; then
-		SCRIPT_ARGS=("$@")
-	else
-		SCRIPT_ARGS=()
-	fi
+    # 传递公共选项给每个脚本（处理空参数情况）
+    if [ $# -gt 0 ]; then
+        SCRIPT_ARGS=("$@")
+    else
+        SCRIPT_ARGS=()
+    fi
 
-	echo "=========================================="
-	echo "1/4. 系统瓶颈总览"
-	echo "=========================================="
-	if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-		"$SCRIPT_DIR/sys_overview.sh" "${SCRIPT_ARGS[@]}" || true
-	else
-		"$SCRIPT_DIR/sys_overview.sh" || true
-	fi
-	echo ""
+    echo "=========================================="
+    echo "1/4. 系统瓶颈总览"
+    echo "=========================================="
+    if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
+        "$SCRIPT_DIR/sys_overview.sh" "${SCRIPT_ARGS[@]}" || true
+    else
+        "$SCRIPT_DIR/sys_overview.sh" || true
+    fi
+    echo ""
 
-	echo "=========================================="
-	echo "2/4. CPU 与内存专项分析"
-	echo "=========================================="
-	if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-		"$SCRIPT_DIR/cpu_mem_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
-	else
-		"$SCRIPT_DIR/cpu_mem_analyzer.sh" || true
-	fi
-	echo ""
+    echo "=========================================="
+    echo "2/4. CPU 与内存专项分析"
+    echo "=========================================="
+    if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
+        "$SCRIPT_DIR/cpu_mem_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
+    else
+        "$SCRIPT_DIR/cpu_mem_analyzer.sh" || true
+    fi
+    echo ""
 
-	echo "=========================================="
-	echo "3/4. 磁盘专项分析"
-	echo "=========================================="
-	if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-		"$SCRIPT_DIR/disk_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
-	else
-		"$SCRIPT_DIR/disk_analyzer.sh" || true
-	fi
-	echo ""
+    echo "=========================================="
+    echo "3/4. 磁盘专项分析"
+    echo "=========================================="
+    if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
+        "$SCRIPT_DIR/disk_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
+    else
+        "$SCRIPT_DIR/disk_analyzer.sh" || true
+    fi
+    echo ""
 
-	echo "=========================================="
-	echo "4/4. 网络专项排查"
-	echo "=========================================="
-	if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-		"$SCRIPT_DIR/network_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
-	else
-		"$SCRIPT_DIR/network_analyzer.sh" || true
-	fi
-	echo ""
+    echo "=========================================="
+    echo "4/4. 网络专项排查"
+    echo "=========================================="
+    if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
+        "$SCRIPT_DIR/network_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
+    else
+        "$SCRIPT_DIR/network_analyzer.sh" || true
+    fi
+    echo ""
 
-	echo "✅ 所有诊断完成！"
-	;;
+    echo "✅ 所有诊断完成！"
+    ;;
 *)
-	echo "错误: 未知子命令 '$SUBCOMMAND'" >&2
-	echo "" >&2
-	print_help
-	;;
+    echo "错误: 未知子命令 '$SUBCOMMAND'" >&2
+    echo "" >&2
+    print_help
+    ;;
 esac
