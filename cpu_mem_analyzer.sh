@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
             SAMPLE_INTERVAL="$2"
             shift 2
         else
-            ss::log_error "错误: --interval 需要指定数字参数"
+            ss::log_error "$(ss::msg MSG_CPU_MEM_ERR_INTERVAL)"
             exit 2
         fi
         ;;
@@ -48,14 +48,14 @@ while [[ $# -gt 0 ]]; do
             SAMPLE_COUNT="$2"
             shift 2
         else
-            ss::log_error "错误: --count 需要指定数字参数"
+            ss::log_error "$(ss::msg MSG_CPU_MEM_ERR_COUNT)"
             exit 2
         fi
         ;;
     -h | --help)
-        ss::print_usage "$(basename "$0")" "CPU 与内存专项深度分析，兼容 Linux 与 macOS" "  --no-mpstat           禁用多核采样（Linux 下有效）
-  --interval N          采样间隔（秒，默认: 1）
-  --count N             采样次数（默认: 3）"
+        ss::print_usage "$(basename "$0")" "$(ss::msg MSG_CPU_MEM_HELP_DESC)" "  --no-mpstat           $(ss::msg MSG_CPU_MEM_HELP_NO_MPSTAT)
+  --interval N          $(ss::msg MSG_CPU_MEM_HELP_INTERVAL)
+  --count N             $(ss::msg MSG_CPU_MEM_HELP_COUNT)"
         exit 0
         ;;
     *)
@@ -80,33 +80,33 @@ else
 fi
 
 # 报告开始
-ss::report_begin "CPU/内存 分析" 12
+ss::report_begin "$(ss::msg MSG_CPU_MEM_REPORT_TITLE)" 12
 
 # ==============================================================================
 # OS 检测与基础信息
 # ==============================================================================
 
-echo "# CPU / 内存 深度分析报告"
+echo "# $(ss::msg MSG_CPU_MEM_TITLE)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     OS_NAME="$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null)"
     ARCH="$(uname -m)"
     UPTIME_INFO=$(uptime | sed 's/^.*up *//; s/, *[0-9]* user.*//; s/ day(s)/天/; s/ hour(s)/小时/; s/ minute(s)/分钟/')
-    echo "> **操作系统:** macOS ${OS_NAME}  "
-    echo "> **架构:** ${ARCH}  "
+    echo "> **$(ss::msg MSG_COMMON_OS):** macOS ${OS_NAME}  "
+    echo "> **$(ss::msg MSG_CPU_MEM_ROW_ARCH):** ${ARCH}  "
 else
     OS_NAME="$(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo 'Linux')"
     ARCH="$(uname -m)"
     UPTIME_INFO=$(uptime -p 2>/dev/null || uptime | awk -F',' '{print $1}')
-    echo "> **操作系统:** ${OS_NAME}  "
-    echo "> **架构:** ${ARCH}  "
+    echo "> **$(ss::msg MSG_COMMON_OS):** ${OS_NAME}  "
+    echo "> **$(ss::msg MSG_CPU_MEM_ROW_ARCH):** ${ARCH}  "
 fi
 
-echo "> **主机名:** $(hostname)  "
-echo "> **采集时间:** $(date '+%Y-%m-%d %H:%M:%S')  "
-echo "> **内核版本:** $(uname -r)  "
-echo "> **运行时长:** ${UPTIME_INFO}  "
+echo "> **$(ss::msg MSG_COMMON_HOSTNAME):** $(hostname)  "
+echo "> **$(ss::msg MSG_COMMON_COLLECT_TIME):** $(date '+%Y-%m-%d %H:%M:%S')  "
+echo "> **$(ss::msg MSG_COMMON_KERNEL):** $(uname -r)  "
+echo "> **$(ss::msg MSG_CPU_MEM_ROW_UPTIME):** ${UPTIME_INFO}  "
 echo ""
 echo "---"
 echo ""
@@ -115,8 +115,8 @@ echo ""
 # 1. CPU 基础信息
 # ==============================================================================
 
-ss::progress 1 12 "CPU 基础信息"
-echo "## 1. CPU 基础信息"
+ss::progress 1 12 "$(ss::msg MSG_CPU_MEM_SECTION_CPU_INFO)"
+echo "## 1. $(ss::msg MSG_CPU_MEM_SECTION_CPU_INFO)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -142,15 +142,15 @@ if [ "$OS_TYPE" = "Darwin" ]; then
         THREADS_PER_CORE=$(awk "BEGIN{printf \"%.1f\", $SIBLINGS/$PHY_CORES}" 2>/dev/null || echo "N/A")
     fi
 
-    echo "| 指标 | 数值 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) |"
     echo "|------|------|"
-    echo "| CPU 型号 | ${CPU_MODEL} |"
-    echo "| 物理核心数 | ${PHY_CORES} |"
-    echo "| 逻辑核心数 (含超线程) | ${LOGIC_CORES} |"
-    echo "| 每核心线程数 | ${THREADS_PER_CORE} |"
-    echo "| 基础频率 | ${CPU_FREQ_MHZ} MHz |"
-    echo "| L2 缓存 | $(ss::hr_bytes ${L2_CACHE}) |"
-    echo "| L3 缓存 | $(ss::hr_bytes ${L3_CACHE}) |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_CPU_MODEL) | ${CPU_MODEL} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_PHY_CORES) | ${PHY_CORES} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_LOGIC_CORES) | ${LOGIC_CORES} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_THREADS) | ${THREADS_PER_CORE} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_BASE_FREQ) | ${CPU_FREQ_MHZ} MHz |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_L2_CACHE) | $(ss::hr_bytes ${L2_CACHE}) |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_L3_CACHE) | $(ss::hr_bytes ${L3_CACHE}) |"
     echo ""
 else
     # Linux CPU 信息
@@ -161,28 +161,28 @@ else
     cache=$(grep 'cache size' /proc/cpuinfo | head -1 | cut -d':' -f2 | xargs)
     flags=$(grep 'flags' /proc/cpuinfo | head -1 | cut -d':' -f2 | xargs | tr ' ' '\n' | grep -E 'vmx|svm|aes|avx|sse4' | tr '\n' ',' | sed 's/,$//')
 
-    echo "| 指标 | 数值 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) |"
     echo "|------|------|"
-    echo "| CPU 型号 | ${model:-N/A} |"
-    echo "| 物理核心数 | ${phy_cores:-N/A} |"
-    echo "| 逻辑核心数 (含超线程) | ${logic_cores:-N/A} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_CPU_MODEL) | ${model:-N/A} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_PHY_CORES) | ${phy_cores:-N/A} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_LOGIC_CORES) | ${logic_cores:-N/A} |"
     if [ -n "$phy_cores" ] && [ "$phy_cores" -gt 0 ] && [ -n "$siblings" ]; then
         threads_per_core=$((siblings / phy_cores))
     else
         threads_per_core="N/A"
     fi
-    echo "| 每核心线程数 | ${threads_per_core} |"
-    echo "| 缓存大小 | ${cache:-N/A} |"
-    echo "| 关键特性 | ${flags:-N/A} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_THREADS) | ${threads_per_core} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_CACHE) | ${cache:-N/A} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_FLAGS) | ${flags:-N/A} |"
 
     # CPU 频率
     min_freq=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq 2>/dev/null | awk '{printf "%.0f", $1/1000}')
     max_freq=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null | awk '{printf "%.0f", $1/1000}')
     cur_freq=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null | awk '{printf "%.0f", $1/1000}')
     if [ -n "$max_freq" ]; then
-        echo "| 最低频率 | ${min_freq} MHz |"
-        echo "| 最高频率 | ${max_freq} MHz |"
-        echo "| 当前频率 | ${cur_freq} MHz |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_MIN_FREQ) | ${min_freq} MHz |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_MAX_FREQ) | ${max_freq} MHz |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_CUR_FREQ) | ${cur_freq} MHz |"
     fi
     echo ""
 fi
@@ -191,8 +191,8 @@ fi
 # 2. CPU 负载与使用率
 # ==============================================================================
 
-ss::progress 2 12 "CPU 负载与使用率"
-echo "## 2. CPU 负载与使用率"
+ss::progress 2 12 "$(ss::msg MSG_CPU_MEM_SECTION_LOAD)"
+echo "## 2. $(ss::msg MSG_CPU_MEM_SECTION_LOAD)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -249,30 +249,30 @@ if command -v bc &>/dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] &&
     threshold_busy=$(echo "$CORES * 1.0" | bc -l)
     threshold_danger=$(echo "$CORES * 2.0" | bc -l)
     if (($(echo "$load1 > $threshold_danger" | bc -l))); then
-        load_eval="🔴 危险"
+        load_eval="$(ss::msg MSG_STATUS_DANGER)"
     elif (($(echo "$load1 > $threshold_busy" | bc -l))); then
-        load_eval="🟡 繁忙"
+        load_eval="$(ss::msg MSG_STATUS_BUSY)"
     else
-        load_eval="🟢 健康"
+        load_eval="$(ss::msg MSG_STATUS_HEALTHY)"
     fi
 else
     load_eval="⚪ 未安装 bc，无法精确评估"
 fi
 
-echo "> **评估标准:** load1 < 核心数×0.7 健康，> 核心数 繁忙，> 核心数×2 危险"
+echo "> **$(ss::msg MSG_CPU_MEM_LABEL_EVAL_CRITERIA):** $(ss::msg MSG_CPU_MEM_CRITERIA_LOAD)"
 echo ""
-echo "| 指标 | 数值 | 评估 |"
+echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_TABLE_EVAL) |"
 echo "|------|------|------|"
-echo "| 1分钟负载 | $load1 | $load_eval |"
-echo "| 5分钟负载 | $load5 | - |"
-echo "| 15分钟负载 | $load15 | - |"
+echo "| $(ss::msg MSG_CPU_MEM_ROW_LOAD1) | $load1 | $load_eval |"
+echo "| $(ss::msg MSG_CPU_MEM_ROW_LOAD5) | $load5 | - |"
+echo "| $(ss::msg MSG_CPU_MEM_ROW_LOAD15) | $load15 | - |"
 echo ""
 
 echo "### CPU 时间分布 (top 快照)"
 echo ""
-echo "> **关键指标:** wa(IO等待) > 20% 说明磁盘瓶颈；sy(系统态) > 20% 说明内核开销大"
+echo "> **$(ss::msg MSG_CPU_MEM_KEY_INDICATOR):** $(ss::msg MSG_CPU_MEM_KEY_INDICATOR_WA)"
 echo ""
-echo "| 指标 | 数值 | 说明 | 状态 |"
+echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_CPU_MEM_DESC) | $(ss::msg MSG_TABLE_STATUS) |"
 echo "|------|------|------|------|"
 
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -281,14 +281,14 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     echo "| id (空闲) | ${id}% | CPU 空闲率 | - |"
     echo "| ni/wa/hi/si/st | N/A | macOS top 不拆分 | - |"
     echo ""
-    echo "> ℹ️ macOS 的 \`top\` 不输出 wa/ni/hi/si/st 等细分指标，建议结合 \`iostat\` 分析磁盘等待"
+    echo "> ℹ️ $(ss::msg MSG_CPU_MEM_NOTE_MAC_TIME)"
     echo ""
 else
     wa_num=$(echo "$wa" | awk '{printf "%d", $1}')
-    if [ "$wa_num" -gt 20 ]; then wa_status="🔴 瓶颈"; elif [ "$wa_num" -gt 10 ]; then wa_status="🟡 偏高"; else wa_status="🟢 正常"; fi
+    if [ "$wa_num" -gt 20 ]; then wa_status="$(ss::msg MSG_STATUS_BOTTLENECK)"; elif [ "$wa_num" -gt 10 ]; then wa_status="$(ss::msg MSG_STATUS_HIGH)"; else wa_status="$(ss::msg MSG_STATUS_NORMAL)"; fi
 
     sy_num=$(echo "$sy" | awk '{printf "%d", $1}')
-    if [ "$sy_num" -gt 20 ]; then sy_status="🔴 过高"; elif [ "$sy_num" -gt 10 ]; then sy_status="🟡 偏高"; else sy_status="🟢 正常"; fi
+    if [ "$sy_num" -gt 20 ]; then sy_status="$(ss::msg MSG_STATUS_ABNORMAL)"; elif [ "$sy_num" -gt 10 ]; then sy_status="$(ss::msg MSG_STATUS_HIGH)"; else sy_status="$(ss::msg MSG_STATUS_NORMAL)"; fi
 
     echo "| us (用户态) | ${us}% | 应用程序消耗 | - |"
     echo "| sy (系统态) | ${sy}% | 内核消耗 | $sy_status |"
@@ -306,12 +306,12 @@ fi
 # ==============================================================================
 
 if [ "$OS_TYPE" != "Darwin" ] && [ "$ENABLE_MPSTAT" = "true" ] && command -v mpstat &>/dev/null; then
-    ss::progress 3 12 "多核 CPU 详细采样 (mpstat)"
-    echo "## 3. 多核 CPU 详细采样 (mpstat)"
+    ss::progress 3 12 "$(ss::msg MSG_CPU_MEM_SECTION_MPSTAT)"
+    echo "## 3. $(ss::msg MSG_CPU_MEM_SECTION_MPSTAT)"
     echo ""
-    echo "> **说明:** 采样 ${SAMPLE_COUNT} 次，每次间隔 ${SAMPLE_INTERVAL} 秒，取平均值"
+    echo "> **$(ss::msg MSG_CPU_MEM_DESC):** $(ss::msgf MSG_CPU_MEM_DESC_SAMPLING "${SAMPLE_COUNT}" "${SAMPLE_INTERVAL}")"
     echo ""
-    echo "| CPU | usr% | sys% | iowait% | idle% | 评估 |"
+    echo "| CPU | usr% | sys% | iowait% | idle% | $(ss::msg MSG_TABLE_EVAL) |"
     echo "|-----|------|------|---------|-------|------|"
 
     mpstat -P ALL $SAMPLE_INTERVAL $SAMPLE_COUNT 2>/dev/null | awk '
@@ -339,10 +339,10 @@ fi
 # 4. 内存总体概况
 # ==============================================================================
 
-ss::progress 4 12 "内存总体概况"
-echo "## 4. 内存总体概况"
+ss::progress 4 12 "$(ss::msg MSG_CPU_MEM_SECTION_MEM)"
+echo "## 4. $(ss::msg MSG_CPU_MEM_SECTION_MEM)"
 echo ""
-echo "> **评估标准:** available < 总内存 10% 为危险；Swap 使用 > 0 说明曾发生内存交换"
+echo "> **$(ss::msg MSG_CPU_MEM_LABEL_EVAL_CRITERIA):** $(ss::msg MSG_CPU_MEM_CRITERIA_MEM)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -396,24 +396,24 @@ if [ "$OS_TYPE" = "Darwin" ]; then
 
     avail_num=$(echo "$avail_pct" | awk '{printf "%d", $1}')
     if [ "$avail_num" -lt 10 ]; then
-        mem_status="🔴 严重不足"
+        mem_status="$(ss::msg MSG_STATUS_INSUFFICIENT)"
     else
-        mem_status="🟢 充足"
+        mem_status="$(ss::msg MSG_STATUS_SUFFICIENT)"
     fi
 
-    echo "| 指标 | 数值 (KB) | 人类可读 | 占比 | 状态 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) (KB) | $(ss::msg MSG_TABLE_HUMAN_READABLE) | $(ss::msg MSG_TABLE_RATIO) | $(ss::msg MSG_TABLE_STATUS) |"
     echo "|------|-----------|----------|------|------|"
-    echo "| 总内存 | $TOTAL_KB | $(ss::hr_kb $TOTAL_KB) | 100% | - |"
-    echo "| 已使用 (估算) | $used_kb | $(ss::hr_kb $used_kb) | ${used_pct}% | - |"
-    echo "| 可用 (free+inactive) | $avail_kb | $(ss::hr_kb $avail_kb) | ${avail_pct}% | $mem_status |"
-    echo "| 活跃内存 | $active_kb | $(ss::hr_kb $active_kb) | - | - |"
-    echo "| 空闲页 | $free_kb | $(ss::hr_kb $free_kb) | - | - |"
-    echo "| 非活跃页 | $inactive_kb | $(ss::hr_kb $inactive_kb) | - | - |"
-    echo "| 锁定页 (wired) | $wired_kb | $(ss::hr_kb $wired_kb) | - | - |"
-    echo "| 压缩页 | $compressed_kb | $(ss::hr_kb $compressed_kb) | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_TOTAL_MEM) | $TOTAL_KB | $(ss::hr_kb $TOTAL_KB) | 100% | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_USED_EST) | $used_kb | $(ss::hr_kb $used_kb) | ${used_pct}% | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_AVAIL) | $avail_kb | $(ss::hr_kb $avail_kb) | ${avail_pct}% | $mem_status |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_ACTIVE) | $active_kb | $(ss::hr_kb $active_kb) | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_FREE_PAGE) | $free_kb | $(ss::hr_kb $free_kb) | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_INACTIVE_PAGE) | $inactive_kb | $(ss::hr_kb $inactive_kb) | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_WIRED) | $wired_kb | $(ss::hr_kb $wired_kb) | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_COMPRESSED) | $compressed_kb | $(ss::hr_kb $compressed_kb) | - | - |"
     echo ""
 
-    echo "> ℹ️ macOS 内存管理采用统一内存架构，inactive 页面可被快速回收，因此可用内存包含 inactive。"
+    echo "> ℹ️ $(ss::msg MSG_CPU_MEM_NOTE_MAC_MEM)"
     echo ""
 else
     # Linux 内存
@@ -437,21 +437,21 @@ else
 
     avail_num=$(echo "$avail_pct" | awk '{printf "%d", $1}')
     if [ "$avail_num" -lt 5 ]; then
-        mem_status="🔴 严重不足"
+        mem_status="$(ss::msg MSG_STATUS_INSUFFICIENT)"
     elif [ "$avail_num" -lt 10 ]; then
-        mem_status="🟡 紧张"
+        mem_status="$(ss::msg MSG_STATUS_TENSE)"
     else
-        mem_status="🟢 充足"
+        mem_status="$(ss::msg MSG_STATUS_SUFFICIENT)"
     fi
 
-    echo "| 指标 | 数值 (KB) | 人类可读 | 占比 | 状态 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) (KB) | $(ss::msg MSG_TABLE_HUMAN_READABLE) | $(ss::msg MSG_TABLE_RATIO) | $(ss::msg MSG_TABLE_STATUS) |"
     echo "|------|-----------|----------|------|------|"
-    echo "| 总内存 | $total_kb | $(ss::hr_kb $total_kb) | 100% | - |"
-    echo "| 已使用 | $used_kb | $(ss::hr_kb $used_kb) | ${used_pct}% | - |"
-    echo "| 可用 (available) | $avail_kb | $(ss::hr_kb $avail_kb) | ${avail_pct}% | $mem_status |"
-    echo "| 缓存/缓冲 | $buff_kb | $(ss::hr_kb $buff_kb) | ${cache_pct}% | - |"
-    echo "| 完全空闲 | $free_kb_val | $(ss::hr_kb $free_kb_val) | - | - |"
-    echo "| 共享内存 | $shared_kb | $(ss::hr_kb $shared_kb) | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_TOTAL_MEM) | $total_kb | $(ss::hr_kb $total_kb) | 100% | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_USED) | $used_kb | $(ss::hr_kb $used_kb) | ${used_pct}% | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_AVAIL_LNX) | $avail_kb | $(ss::hr_kb $avail_kb) | ${avail_pct}% | $mem_status |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_CACHE_BUF) | $buff_kb | $(ss::hr_kb $buff_kb) | ${cache_pct}% | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_FULL_FREE) | $free_kb_val | $(ss::hr_kb $free_kb_val) | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_SHARED) | $shared_kb | $(ss::hr_kb $shared_kb) | - | - |"
     echo ""
 fi
 
@@ -459,8 +459,8 @@ fi
 # 5. Swap 使用情况
 # ==============================================================================
 
-ss::progress 5 12 "Swap 使用情况"
-echo "## 5. Swap 使用情况"
+ss::progress 5 12 "$(ss::msg MSG_CPU_MEM_SECTION_SWAP)"
+echo "## 5. $(ss::msg MSG_CPU_MEM_SECTION_SWAP)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -475,19 +475,19 @@ if [ "$OS_TYPE" = "Darwin" ]; then
 
         # 简单判断是否使用
         if echo "$SWAP_INFO" | grep -q "used = 0.00M"; then
-            swap_status="🟢 未使用 - 内存充足"
+            swap_status="$(ss::msg MSG_CPU_MEM_SWAP_UNUSED)"
         else
-            swap_status="🟡 已使用 - 曾发生内存交换"
+            swap_status="$(ss::msg MSG_CPU_MEM_SWAP_USED_MAC)"
         fi
 
-        echo "| 指标 | 数值 | 状态 |"
+        echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_TABLE_STATUS) |"
         echo "|------|------|------|"
-        echo "| Swap 总量 | ${swap_total} | - |"
-        echo "| Swap 已用 | ${swap_used} | - |"
-        echo "| Swap 空闲 | ${swap_free} | $swap_status |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_SWAP_TOTAL) | ${swap_total} | - |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_SWAP_USED) | ${swap_used} | - |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_SWAP_FREE) | ${swap_free} | $swap_status |"
         echo ""
     else
-        echo "> ℹ️ 无法获取 macOS Swap 信息"
+        echo "> ℹ️ $(ss::msg MSG_CPU_MEM_NOTE_MAC_SWAP)"
         echo ""
     fi
 else
@@ -498,21 +498,21 @@ else
     swap_free=$(echo "$swap_line" | awk '{print $4}')
 
     if [ "$swap_total" -eq 0 ]; then
-        echo "> ⚠️ **未配置 Swap**。内存耗尽时将触发 OOM Killer 直接杀死进程，建议配置适量 Swap。"
+        echo "> $(ss::msg MSG_CPU_MEM_SWAP_NOT_CONFIGURED)"
         echo ""
     else
         swap_pct=$(awk "BEGIN {printf \"%.2f\", $swap_used/$swap_total*100}")
         if [ "$swap_used" -gt 0 ]; then
-            swap_status="🟡 已使用 ${swap_pct}% - 曾发生内存交换"
+            swap_status="$(ss::msgf MSG_CPU_MEM_SWAP_USED "${swap_pct}")"
         else
-            swap_status="🟢 未使用 - 内存充足"
+            swap_status="$(ss::msg MSG_CPU_MEM_SWAP_UNUSED)"
         fi
 
-        echo "| 指标 | 数值 (KB) | 人类可读 | 使用率 | 状态 |"
+        echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) (KB) | $(ss::msg MSG_TABLE_HUMAN_READABLE) | $(ss::msg MSG_CPU_MEM_LABEL_USAGE_RATE) | $(ss::msg MSG_TABLE_STATUS) |"
         echo "|------|-----------|----------|--------|------|"
-        echo "| Swap 总量 | $swap_total | $(ss::hr_kb $swap_total) | 100% | - |"
-        echo "| Swap 已用 | $swap_used | $(ss::hr_kb $swap_used) | ${swap_pct}% | $swap_status |"
-        echo "| Swap 空闲 | $swap_free | $(ss::hr_kb $swap_free) | - | - |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_SWAP_TOTAL) | $swap_total | $(ss::hr_kb $swap_total) | 100% | - |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_SWAP_USED) | $swap_used | $(ss::hr_kb $swap_used) | ${swap_pct}% | $swap_status |"
+        echo "| $(ss::msg MSG_CPU_MEM_ROW_SWAP_FREE) | $swap_free | $(ss::hr_kb $swap_free) | - | - |"
         echo ""
     fi
 fi
@@ -521,36 +521,36 @@ fi
 # 6. 内存压力与 OOM 风险 (Linux 详细 / macOS 简化)
 # ==============================================================================
 
-ss::progress 6 12 "内存压力与 OOM 风险"
-echo "## 6. 内存压力与 OOM 风险"
+ss::progress 6 12 "$(ss::msg MSG_CPU_MEM_SECTION_OOM)"
+echo "## 6. $(ss::msg MSG_CPU_MEM_SECTION_OOM)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     echo "> ℹ️ macOS 不提供 /proc/meminfo 等价物，以下为 vm_stat 关键指标"
     echo ""
-    echo "| 指标 | 数值 (KB) | 说明 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) (KB) | $(ss::msg MSG_CPU_MEM_DESC) |"
     echo "|------|-----------|------|"
-    echo "| MemTotal | $TOTAL_KB | 物理内存总量 |"
-    echo "| MemAvailable (估算) | $avail_kb | free + inactive 页面 |"
-    echo "| MemFree | $free_kb | 完全空闲页 |"
-    echo "| Active | $active_kb | 活跃内存页 |"
-    echo "| Inactive | $inactive_kb | 非活跃内存页（优先回收） |"
-    echo "| Wired | $wired_kb | 锁定内存（无法交换） |"
-    echo "| Compressed | $compressed_kb | 被压缩的内存页 |"
+    echo "| MemTotal | $TOTAL_KB | $(ss::msg MSG_CPU_MEM_ROW_TOTAL_MEM) |"
+    echo "| MemAvailable ($(ss::msg MSG_CPU_MEM_ROW_USED_EST)) | $avail_kb | free + inactive |"
+    echo "| MemFree | $free_kb | $(ss::msg MSG_CPU_MEM_ROW_FULL_FREE) |"
+    echo "| Active | $active_kb | $(ss::msg MSG_CPU_MEM_ROW_ACTIVE) |"
+    echo "| Inactive | $inactive_kb | $(ss::msg MSG_CPU_MEM_ROW_INACTIVE_PAGE) |"
+    echo "| Wired | $wired_kb | $(ss::msg MSG_CPU_MEM_ROW_WIRED) |"
+    echo "| Compressed | $compressed_kb | $(ss::msg MSG_CPU_MEM_ROW_COMPRESSED) |"
     echo ""
 
     # macOS 内存压力
     MEM_PRESSURE=$(ss::read_sysctl "kern.memorystatus_vm_pressure_level")
-    echo "### macOS 内存压力级别"
+    echo "### $(ss::msg MSG_CPU_MEM_NOTE_MAC_PRESSURE)"
     echo ""
-    echo "| 级别 | 数值 | 含义 |"
+    echo "| $(ss::msg MSG_CPU_MEM_LABEL_LEVEL) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_CPU_MEM_LABEL_MEANING) |"
     echo "|------|------|------|"
     if [ "$MEM_PRESSURE" = "1" ]; then
-        echo "| 压力级别 | 1 | 🟢 正常 |"
+        echo "| 压力级别 | 1 | $(ss::msg MSG_CPU_MEM_PRESSURE_NORMAL) |"
     elif [ "$MEM_PRESSURE" = "2" ]; then
-        echo "| 压力级别 | 2 | 🟡 警告 - 开始压缩内存 |"
+        echo "| 压力级别 | 2 | $(ss::msg MSG_CPU_MEM_PRESSURE_WARN) |"
     elif [ "$MEM_PRESSURE" = "4" ]; then
-        echo "| 压力级别 | 4 | 🔴 紧急 - 可能触发 OOM |"
+        echo "| 压力级别 | 4 | $(ss::msg MSG_CPU_MEM_PRESSURE_CRITICAL) |"
     else
         echo "| 压力级别 | ${MEM_PRESSURE} | - |"
     fi
@@ -579,20 +579,20 @@ else
 
     reclaimable=$((mem_buffers + mem_cached + mem_sreclaimable))
 
-    echo "| 指标 | 数值 (KB) | 说明 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) (KB) | $(ss::msg MSG_CPU_MEM_DESC) |"
     echo "|------|-----------|------|"
-    echo "| MemTotal | $mem_total | 物理内存总量 |"
-    echo "| MemAvailable | $mem_avail | 真正可用内存（含可回收缓存） |"
-    echo "| MemFree | $mem_free | 完全未使用内存 |"
+    echo "| MemTotal | $mem_total | $(ss::msg MSG_CPU_MEM_ROW_TOTAL_MEM) |"
+    echo "| MemAvailable | $mem_avail | $(ss::msg MSG_CPU_MEM_ROW_AVAIL_LNX) |"
+    echo "| MemFree | $mem_free | $(ss::msg MSG_CPU_MEM_ROW_FULL_FREE) |"
     echo "| Buffers | $mem_buffers | 块设备缓存 |"
     echo "| Cached | $mem_cached | 文件页缓存 |"
-    echo "| SReclaimable | $mem_sreclaimable | 可回收 Slab |"
-    echo "| 可回收缓存合计 | $reclaimable | Buffers+Cached+SReclaimable |"
-    echo "| Active | $mem_active | 活跃内存页 |"
-    echo "| Inactive | $mem_inactive | 非活跃内存页（优先回收） |"
+    echo "| SReclaimable | $mem_sreclaimable | $(ss::msg MSG_CPU_MEM_ROW_RECLAIMABLE) Slab |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_RECLAIMABLE) | $reclaimable | Buffers+Cached+SReclaimable |"
+    echo "| Active | $mem_active | $(ss::msg MSG_CPU_MEM_ROW_ACTIVE) |"
+    echo "| Inactive | $mem_inactive | $(ss::msg MSG_CPU_MEM_ROW_INACTIVE_PAGE) |"
     echo "| AnonPages | $mem_anon | 匿名内存（进程堆栈等，需 Swap 才能释放） |"
     echo "| Mapped | $mem_mapped | 文件映射内存 |"
-    echo "| Shmem | $mem_shmem | 共享内存 / tmpfs |"
+    echo "| Shmem | $mem_shmem | $(ss::msg MSG_CPU_MEM_ROW_SHARED) / tmpfs |"
     echo "| Slab | $mem_slab | 内核对象缓存 |"
     echo "| Dirty | $mem_dirty | 待写回磁盘的脏页 |"
     echo "| Writeback | $mem_writeback | 正在写回磁盘的页 |"
@@ -601,7 +601,7 @@ else
 
     # OOM 风险评估（仅 Linux 提供 /proc/sys/vm/overcommit_*）
     if [ "$OS_TYPE" = "Darwin" ]; then
-        echo "### OOM 风险评估"
+        echo "### $(ss::msg MSG_CPU_MEM_OOM_TITLE)"
         echo ""
         echo "> ℹ️ macOS 采用不同内存管理模型，无 Linux overcommit 机制，本节跳过。"
         echo ""
@@ -609,9 +609,9 @@ else
         oom_score_adj=$(cat /proc/sys/vm/overcommit_memory 2>/dev/null || echo "N/A")
         ratio=$(cat /proc/sys/vm/overcommit_ratio 2>/dev/null || echo "N/A")
 
-        echo "### OOM 风险评估"
+        echo "### $(ss::msg MSG_CPU_MEM_OOM_TITLE)"
         echo ""
-        echo "| 指标 | 数值 | 说明 |"
+        echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_CPU_MEM_DESC) |"
         echo "|------|------|------|"
         echo "| overcommit_memory | $oom_score_adj | 0=启发式 1=始终允许 2=严格限制 |"
         echo "| overcommit_ratio | $ratio% | 可超量提交的百分比 |"
@@ -634,16 +634,16 @@ fi
 # 7. 进程状态分布
 # ==============================================================================
 
-ss::progress 7 12 "进程状态分布"
-echo "## 7. 进程状态分布"
+ss::progress 7 12 "$(ss::msg MSG_CPU_MEM_SECTION_PROC)"
+echo "## 7. $(ss::msg MSG_CPU_MEM_SECTION_PROC)"
 echo ""
-echo "> **关键指标:** D 状态进程多 = 磁盘 IO 瓶颈；Z 状态进程 > 0 = 应用 Bug"
+echo "> **$(ss::msg MSG_CPU_MEM_KEY_INDICATOR):** $(ss::msg MSG_CPU_MEM_KEY_INDICATOR_PROC)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS ps 状态码与 Linux 不同，需要映射
     # macOS 常见状态: S(sleeping), R(running), T(stopped), Z(zombie), I(idle), U(uninterruptible wait)
-    echo "| 状态 | 数量 | 含义 | 评估 |"
+    echo "| $(ss::msg MSG_CPU_MEM_LABEL_LEVEL) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_CPU_MEM_LABEL_MEANING) | $(ss::msg MSG_TABLE_EVAL) |"
     echo "|------|------|------|------|"
 
     ps ax -o stat= 2>/dev/null | awk '{
@@ -668,7 +668,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS 僵尸进程
     z_count=$(ps ax -o stat= 2>/dev/null | grep -c '^Z')
     if [ "$z_count" -gt 0 ]; then
-        echo "### Z 状态进程详情 (僵尸进程)"
+        echo "### $(ss::msg MSG_CPU_MEM_ZOMBIE_DETAIL)"
         echo ""
         echo "| PID | PPID | 用户 | 命令 |"
         echo "|-----|------|------|------|"
@@ -679,7 +679,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     fi
 else
     # Linux 进程状态
-    echo "| 状态 | 数量 | 含义 | 评估 |"
+    echo "| $(ss::msg MSG_CPU_MEM_LABEL_LEVEL) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_CPU_MEM_LABEL_MEANING) | $(ss::msg MSG_TABLE_EVAL) |"
     echo "|------|------|------|------|"
     ps aux 2>/dev/null | awk 'NR>1 {
         stat = substr($8, 1, 1)
@@ -703,7 +703,7 @@ else
     # D 状态进程
     d_count=$(ps aux 2>/dev/null | awk 'NR>1 && substr($8,1,1)=="D" {count++} END {print count+0}')
     if [ "$d_count" -gt 0 ]; then
-        echo "### D 状态进程详情 (IO 等待)"
+        echo "### $(ss::msg MSG_CPU_MEM_D_DETAIL)"
         echo ""
         echo "| PID | 用户 | CPU% | MEM% | 命令 |"
         echo "|-----|------|------|------|------|"
@@ -714,7 +714,7 @@ else
     # Z 状态进程
     z_count=$(ps aux 2>/dev/null | awk 'NR>1 && substr($8,1,1)=="Z" {count++} END {print count+0}')
     if [ "$z_count" -gt 0 ]; then
-        echo "### Z 状态进程详情 (僵尸进程)"
+        echo "### $(ss::msg MSG_CPU_MEM_ZOMBIE_DETAIL)"
         echo ""
         echo "| PID | PPID | 用户 | 命令 |"
         echo "|-----|------|------|------|"
@@ -729,8 +729,8 @@ fi
 # 8. 上下文切换与中断统计 (Linux 原生 / macOS 近似)
 # ==============================================================================
 
-ss::progress 8 12 "上下文切换与中断统计"
-echo "## 8. 上下文切换与中断统计"
+ss::progress 8 12 "$(ss::msg MSG_CPU_MEM_SECTION_CTX)"
+echo "## 8. $(ss::msg MSG_CPU_MEM_SECTION_CTX)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -738,12 +738,12 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     CTXT_TOTAL=$(netstat -s 2>/dev/null | grep -i "context switch" | head -1 | awk '{print $1}')
     INTR_TOTAL=$(netstat -s 2>/dev/null | grep -i "interrupt" | head -1 | awk '{print $1}')
 
-    echo "> ℹ️ macOS 通过 netstat 近似统计，部分指标可能无法精确获取"
+    echo "> ℹ️ $(ss::msg MSG_CPU_MEM_NOTE_MAC_NETSTAT)"
     echo ""
-    echo "| 指标 | 累计值 | 说明 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_CPU_MEM_LABEL_CUMULATIVE) | $(ss::msg MSG_CPU_MEM_DESC) |"
     echo "|------|--------|------|"
-    echo "| 上下文切换 | ${CTXT_TOTAL:-N/A} | 近似值 (netstat) |"
-    echo "| 中断 | ${INTR_TOTAL:-N/A} | 近似值 (netstat) |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_CTX_SWITCH) | ${CTXT_TOTAL:-N/A} | $(ss::msg MSG_CPU_MEM_LABEL_APPROX_NETSTAT) |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_INTERRUPT) | ${INTR_TOTAL:-N/A} | $(ss::msg MSG_CPU_MEM_LABEL_APPROX_NETSTAT) |"
     echo ""
 else
     # Linux /proc/stat
@@ -760,15 +760,15 @@ else
         proc_rate=$(awk "BEGIN {printf \"%.2f\", $processes_total / $uptime_sec}")
     fi
 
-    echo "> **评估标准:** 上下文切换率 > 50k/s 偏高，> 100k/s 需优化进程模型"
+    echo "> **$(ss::msg MSG_CPU_MEM_LABEL_EVAL_CRITERIA):** $(ss::msg MSG_CPU_MEM_CRITERIA_CTX)"
     echo ""
-    echo "| 指标 | 累计值 | 每秒平均 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_CPU_MEM_LABEL_CUMULATIVE) | $(ss::msg MSG_CPU_MEM_LABEL_PER_SEC) |"
     echo "|------|--------|----------|"
-    echo "| 上下文切换 (ctxt) | $ctxt_total | ${ctxt_rate:-N/A} |"
-    echo "| 硬件中断 (intr) | $intr_total | ${intr_rate:-N/A} |"
-    echo "| 软中断 (softirq) | $softirq_total | - |"
-    echo "| 进程创建 (fork) | $processes_total | ${proc_rate:-N/A} |"
-    echo "| 系统运行时间 | ${uptime_sec}s | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_CTX_SWITCH) (ctxt) | $ctxt_total | ${ctxt_rate:-N/A} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_INTERRUPT) (intr) | $intr_total | ${intr_rate:-N/A} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_SOFTIRQ) (softirq) | $softirq_total | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_FORK) (fork) | $processes_total | ${proc_rate:-N/A} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_UPTIME_SEC) | ${uptime_sec}s | - |"
     echo ""
 fi
 
@@ -776,12 +776,12 @@ fi
 # 9. Top 资源消耗进程
 # ==============================================================================
 
-ss::progress 9 12 "Top 资源消耗进程"
-echo "## 9. Top 资源消耗进程"
+ss::progress 9 12 "$(ss::msg MSG_CPU_MEM_SECTION_TOP)"
+echo "## 9. $(ss::msg MSG_CPU_MEM_SECTION_TOP)"
 echo ""
 
 # CPU Top 10
-echo "### CPU 占用 Top 10"
+echo "### $(ss::msg MSG_CPU_MEM_TOP_CPU)"
 echo ""
 echo "| PID | 用户 | CPU% | MEM% | VSZ (KB) | RSS (KB) | 状态 | 命令 |"
 echo "|-----|------|------|------|----------|----------|------|------|"
@@ -801,7 +801,7 @@ fi
 echo ""
 
 # 内存 Top 10
-echo "### 内存占用 Top 10 (按 RSS 物理内存)"
+echo "### $(ss::msg MSG_CPU_MEM_TOP_MEM)"
 echo ""
 echo "| PID | 用户 | CPU% | MEM% | VSZ (KB) | RSS (KB) | 状态 | 命令 |"
 echo "|-----|------|------|------|----------|----------|------|------|"
@@ -823,8 +823,8 @@ echo ""
 # 10. 系统句柄与限制
 # ==============================================================================
 
-ss::progress 10 12 "系统句柄与限制"
-echo "## 10. 系统句柄与限制"
+ss::progress 10 12 "$(ss::msg MSG_CPU_MEM_SECTION_FD)"
+echo "## 10. $(ss::msg MSG_CPU_MEM_SECTION_FD)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -837,25 +837,25 @@ if [ "$OS_TYPE" = "Darwin" ]; then
         file_pct=$(awk "BEGIN {printf \"%.2f\", $KERN_FILES/$KERN_MAXFILES*100}")
         pct_int=${file_pct%.*}
         if [ "$pct_int" -gt 90 ]; then
-            file_status="🔴 危险"
+            file_status="$(ss::msg MSG_STATUS_DANGER)"
         elif [ "$pct_int" -gt 80 ]; then
-            file_status="🟡 偏高"
+            file_status="$(ss::msg MSG_STATUS_HIGH)"
         else
-            file_status="🟢 正常"
+            file_status="$(ss::msg MSG_STATUS_NORMAL)"
         fi
     else
         file_pct="N/A"
         file_status="-"
     fi
 
-    echo "| 指标 | 数值 | 使用率 | 状态 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_CPU_MEM_LABEL_USAGE_RATE) | $(ss::msg MSG_TABLE_STATUS) |"
     echo "|------|------|--------|------|"
-    echo "| 已打开文件数 | $KERN_FILES | - | - |"
-    echo "| 系统文件上限 | $KERN_MAXFILES | ${file_pct}% | $file_status |"
-    echo "| 系统进程上限 | $KERN_MAXPROC | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_OPEN_FILES) | $KERN_FILES | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_FILE_LIMIT) | $KERN_MAXFILES | ${file_pct}% | $file_status |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_PROC_LIMIT) | $KERN_MAXPROC | - | - |"
     echo ""
 
-    echo "> ℹ️ macOS 不支持按进程统计句柄数（无 /proc/PID/fd），建议使用 \`lsof -p PID | wc -l\` 手动检查"
+    echo "> ℹ️ $(ss::msg MSG_CPU_MEM_NOTE_MAC_FD)"
     echo ""
 else
     # Linux 句柄
@@ -867,11 +867,11 @@ else
     if [ "$file_max" -gt 0 ]; then
         file_pct=$(awk "BEGIN {printf \"%.2f\", $file_allocated/$file_max*100}")
         if [ "${file_pct%.*}" -gt 80 ]; then
-            file_status="🟡 偏高"
+            file_status="$(ss::msg MSG_STATUS_HIGH)"
         elif [ "${file_pct%.*}" -gt 90 ]; then
-            file_status="🔴 危险"
+            file_status="$(ss::msg MSG_STATUS_DANGER)"
         else
-            file_status="🟢 正常"
+            file_status="$(ss::msg MSG_STATUS_NORMAL)"
         fi
     else
         file_pct="N/A"
@@ -880,16 +880,16 @@ else
 
     proc_max=$(cat /proc/sys/fs/nr_open 2>/dev/null || echo "N/A")
 
-    echo "| 指标 | 数值 | 使用率 | 状态 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_CPU_MEM_LABEL_USAGE_RATE) | $(ss::msg MSG_TABLE_STATUS) |"
     echo "|------|------|--------|------|"
-    echo "| 已分配句柄 | $file_allocated | - | - |"
-    echo "| 未使用句柄 | $file_unused | - | - |"
-    echo "| 系统句柄上限 | $file_max | ${file_pct}% | $file_status |"
-    echo "| 单进程句柄上限 (nr_open) | $proc_max | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_ALLOC_HANDLE) | $file_allocated | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_UNUSED_HANDLE) | $file_unused | - | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_HANDLE_LIMIT) | $file_max | ${file_pct}% | $file_status |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_NR_OPEN) | $proc_max | - | - |"
     echo ""
 
     # 进程句柄 Top 5
-    echo "### 进程句柄使用 Top 5"
+    echo "### $(ss::msg MSG_CPU_MEM_TOP_FD)"
     echo ""
     echo "| PID | 用户 | 句柄数 | 命令 |"
     echo "|-----|------|--------|------|"
@@ -912,21 +912,21 @@ fi
 # ==============================================================================
 
 if [ "$OS_TYPE" != "Darwin" ]; then
-    ss::progress 11 12 "内核内存 (Slab) 详情"
-    echo "## 11. 内核内存 (Slab) 详情"
+    ss::progress 11 12 "$(ss::msg MSG_CPU_MEM_SECTION_SLAB)"
+    echo "## 11. $(ss::msg MSG_CPU_MEM_SECTION_SLAB)"
     echo ""
 
     sunreclaim=$(grep "^SUnreclaim:" /proc/meminfo 2>/dev/null | awk '{print $2}')
 
-    echo "| 指标 | 数值 (KB) | 说明 |"
+    echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) (KB) | $(ss::msg MSG_CPU_MEM_DESC) |"
     echo "|------|-----------|------|"
-    echo "| Slab (总量) | $mem_slab | 内核对象缓存总量 |"
-    echo "| SReclaimable | $mem_sreclaimable | 可回收 Slab |"
-    echo "| SUnreclaim | $sunreclaim | 不可回收 Slab |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_SLAB_TOTAL) | $mem_slab | 内核对象缓存总量 |"
+    echo "| SReclaimable | $mem_sreclaimable | $(ss::msg MSG_CPU_MEM_ROW_RECLAIMABLE) Slab |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_SUNRECLAIM) | $sunreclaim | 不可回收 Slab |"
     echo ""
 
     if command -v slabtop &>/dev/null; then
-        echo "### Slab 占用 Top 10"
+        echo "### $(ss::msg MSG_CPU_MEM_TOP_SLAB)"
         echo ""
         echo "| 对象名 | 活跃数 | 总数量 | 单个大小 | 总大小 |"
         echo "|--------|--------|--------|----------|--------|"
@@ -941,40 +941,40 @@ fi
 # 12. 负载趋势分析
 # ==============================================================================
 
-ss::progress 12 12 "负载趋势分析"
-echo "## 12. 负载趋势分析"
+ss::progress 12 12 "$(ss::msg MSG_CPU_MEM_SECTION_TREND)"
+echo "## 12. $(ss::msg MSG_CPU_MEM_SECTION_TREND)"
 echo ""
 
-echo "> **趋势判断:**"
+echo "> **$(ss::msg MSG_CPU_MEM_TREND_JUDGEMENT):**"
 if command -v bc &>/dev/null && [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
     if (($(echo "$load1 > $load5" | bc -l))) && (($(echo "$load5 > $load15" | bc -l))); then
-        echo "> 📈 **负载呈上升趋势** — 系统越来越忙"
+        echo "> $(ss::msg MSG_CPU_MEM_TREND_UP)"
     elif (($(echo "$load1 < $load5" | bc -l))) && (($(echo "$load5 < $load15" | bc -l))); then
-        echo "> 📉 **负载呈下降趋势** — 系统正在恢复"
+        echo "> $(ss::msg MSG_CPU_MEM_TREND_DOWN)"
     else
-        echo "> ➡️ **负载相对平稳** — 无明显趋势"
+        echo "> $(ss::msg MSG_CPU_MEM_TREND_STABLE)"
     fi
 else
-    echo "> ⚪ 未安装 bc 或负载数据不完整，无法计算趋势"
+    echo "> $(ss::msg MSG_CPU_MEM_TREND_UNAVAILABLE)"
 fi
 echo ""
 
-echo "| 时间窗口 | 负载值 | 与核心数比值 |"
+echo "| $(ss::msg MSG_CPU_MEM_TIME_WINDOW) | $(ss::msg MSG_CPU_MEM_LOAD_VAL) | $(ss::msg MSG_CPU_MEM_RATIO_CORE) |"
 echo "|----------|--------|--------------|"
 if command -v bc &>/dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] &&
     [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
     ratio1=$(printf "%.2f" "$(echo "scale=2; $load1 / $CORES" | bc -l)")
     ratio5=$(printf "%.2f" "$(echo "scale=2; $load5 / $CORES" | bc -l)")
     ratio15=$(printf "%.2f" "$(echo "scale=2; $load15 / $CORES" | bc -l)")
-    echo "| 1分钟 | $load1 | ${ratio1} |"
-    echo "| 5分钟 | $load5 | ${ratio5} |"
-    echo "| 15分钟 | $load15 | ${ratio15} |"
-    echo "| 逻辑核心数 | $CORES | 基准线 |"
+    echo "| $(ss::msg MSG_CPU_MEM_1MIN) | $load1 | ${ratio1} |"
+    echo "| $(ss::msg MSG_CPU_MEM_5MIN) | $load5 | ${ratio5} |"
+    echo "| $(ss::msg MSG_CPU_MEM_15MIN) | $load15 | ${ratio15} |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_LOGIC_CORES_SIMPLE) | $CORES | $(ss::msg MSG_CPU_MEM_BASELINE) |"
 else
-    echo "| 1分钟 | $load1 | - |"
-    echo "| 5分钟 | $load5 | - |"
-    echo "| 15分钟 | $load15 | - |"
-    echo "| 逻辑核心数 | $CORES | 基准线 |"
+    echo "| $(ss::msg MSG_CPU_MEM_1MIN) | $load1 | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_5MIN) | $load5 | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_15MIN) | $load15 | - |"
+    echo "| $(ss::msg MSG_CPU_MEM_ROW_LOGIC_CORES_SIMPLE) | $CORES | $(ss::msg MSG_CPU_MEM_BASELINE) |"
 fi
 echo ""
 
@@ -984,22 +984,22 @@ echo ""
 
 echo "---"
 echo ""
-echo "## 附录：分析建议"
+echo "## $(ss::msg MSG_CPU_MEM_APPENDIX)"
 echo ""
-echo "将此报告粘贴给大模型时，可附加以下提示词："
+echo "$(ss::msg MSG_CPU_MEM_APPENDIX_HINT)"
 echo ""
 echo '```'
-echo "请分析以下 CPU/内存 报告，重点关注："
-echo "1. CPU 负载与核心数比值是否合理，wa(IO等待)是否过高"
-echo "2. 内存 available 是否充足，Swap 是否被使用"
-echo "3. 是否存在僵尸进程或大量 D/U 状态进程"
-echo "4. 上下文切换率是否异常偏高"
-echo "5. 哪些进程是 CPU/内存 消耗大户，是否存在内存泄漏嫌疑"
-echo "6. 文件句柄使用率是否接近上限"
-echo "7. 给出具体的优化建议或扩容方案"
+echo "$(ss::msg MSG_CPU_MEM_APPENDIX_PROMPT)"
+echo "1. $(ss::msg MSG_CPU_MEM_APPENDIX_P1)"
+echo "2. $(ss::msg MSG_CPU_MEM_APPENDIX_P2)"
+echo "3. $(ss::msg MSG_CPU_MEM_APPENDIX_P3)"
+echo "4. $(ss::msg MSG_CPU_MEM_APPENDIX_P4)"
+echo "5. $(ss::msg MSG_CPU_MEM_APPENDIX_P5)"
+echo "6. $(ss::msg MSG_CPU_MEM_APPENDIX_P6)"
+echo "7. $(ss::msg MSG_CPU_MEM_APPENDIX_P7)"
 echo '```'
 echo ""
-echo "> 📄 **报告已保存至:** \`$REPORT_PATH\`"
+echo "> 📄 **$(ss::msg MSG_COMMON_REPORT_SAVED):** \`$REPORT_PATH\`"
 
 # 报告结束
 ss::report_end "$REPORT_PATH"

@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
             PING_TARGETS="$2"
             shift 2
         else
-            ss::log_error "错误: --ping-targets 需要指定目标参数"
+            ss::log_error "$(ss::msgf MSG_NET_ERR_PING "--ping-targets")"
             exit 2
         fi
         ;;
@@ -52,13 +52,13 @@ while [[ $# -gt 0 ]]; do
             DNS_TARGETS="$2"
             shift 2
         else
-            ss::log_error "错误: --dns-targets 需要指定目标参数"
+            ss::log_error "$(ss::msgf MSG_NET_ERR_DNS "--dns-targets")"
             exit 2
         fi
         ;;
     -h | --help)
-        ss::print_usage "$(basename "$0")" "网络专项排查，采集接口、连通性、连接数、端口监听、DNS、丢包与延迟等" "  --ping-targets \"IP1 IP2\"  连通性探测目标（默认: 8.8.8.8 1.1.1.1）
-  --dns-targets \"D1 D2\"      DNS 解析测试域名（默认: www.baidu.com www.google.com）"
+        ss::print_usage "$(basename "$0")" "$(ss::msg MSG_NET_HELP_DESC)" "$(ss::msg MSG_NET_HELP_PING_TARGETS)
+$(ss::msg MSG_NET_HELP_DNS_TARGETS)"
         exit 0
         ;;
     *)
@@ -69,23 +69,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 报告开始
-ss::report_begin "网络深度排查" 8
+ss::report_begin "$(ss::msg MSG_NET_REPORT_BEGIN)" 8
 
 # ==============================================================================
 # Markdown 报告头
 # ==============================================================================
-echo "# 网络深度排查报告"
+echo "# $(ss::msg MSG_NET_REPORT_TITLE)"
 echo ""
 if [ "$OS_TYPE" = "Darwin" ]; then
     OS_NAME="$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null)"
 else
     OS_NAME="$(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2 || echo 'Linux')"
 fi
-echo "> **主机名:** $(hostname)  "
-echo "> **采集时间:** $(date '+%Y-%m-%d %H:%M:%S')  "
-echo "> **报告文件:** \`$REPORT_PATH\`  "
-echo "> **操作系统:** ${OS_NAME}  "
-echo "> **内核版本:** $(uname -r)  "
+echo "> **$(ss::msg MSG_NET_LABEL_HOSTNAME):** $(hostname)  "
+echo "> **$(ss::msg MSG_NET_LABEL_COLLECT_TIME):** $(date '+%Y-%m-%d %H:%M:%S')  "
+echo "> **$(ss::msg MSG_NET_LABEL_REPORT_FILE):** \`$REPORT_PATH\`  "
+echo "> **$(ss::msg MSG_NET_LABEL_OS):** ${OS_NAME}  "
+echo "> **$(ss::msg MSG_NET_LABEL_KERNEL):** $(uname -r)  "
 echo ""
 echo "---"
 echo ""
@@ -93,12 +93,12 @@ echo ""
 # ==============================================================================
 # 1. 网络接口信息
 # ==============================================================================
-ss::progress 1 8 "网络接口信息"
-echo "## 1. 网络接口信息"
+ss::progress 1 8 "$(ss::msg MSG_NET_SECTION_IFACE)"
+echo "## 1. $(ss::msg MSG_NET_SECTION_IFACE)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-    echo "| 接口 | MAC | IP 地址 | 状态 | MTU |"
+    echo "| $(ss::msg MSG_NET_IFACE_HDR) |"
     echo "|------|-----|---------|------|-----|"
     for iface in $(ifconfig 2>/dev/null | grep -E '^[a-z0-9]+:' | awk -F: '{print $1}'); do
         [ "$iface" = "lo0" ] && continue
@@ -111,7 +111,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     done
     echo ""
 else
-    echo "| 接口 | MAC | IP 地址 | 状态 | MTU |"
+    echo "| $(ss::msg MSG_NET_IFACE_HDR) |"
     echo "|------|-----|---------|------|-----|"
     for iface in $(ls /sys/class/net 2>/dev/null); do
         [ "$iface" = "lo" ] && continue
@@ -128,19 +128,19 @@ fi
 # ==============================================================================
 # 2. 路由与默认网关
 # ==============================================================================
-ss::progress 2 8 "路由与默认网关"
-echo "## 2. 路由与默认网关"
+ss::progress 2 8 "$(ss::msg MSG_NET_SECTION_ROUTE)"
+echo "## 2. $(ss::msg MSG_NET_SECTION_ROUTE)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-    echo "### 路由表 (netstat -rn)"
+    echo "### $(ss::msg MSG_NET_ROUTE_TABLE) (netstat -rn)"
     echo ""
     echo '```'
     netstat -rn 2>/dev/null | head -40
     echo '```'
     gw=$(netstat -rn 2>/dev/null | awk '/default/ {print $2; exit}')
 else
-    echo "### 路由表 (ip route)"
+    echo "### $(ss::msg MSG_NET_ROUTE_TABLE) (ip route)"
     echo ""
     echo '```'
     ip route 2>/dev/null | head -40
@@ -149,21 +149,21 @@ else
 fi
 echo ""
 if [ -n "$gw" ]; then
-    echo "> **默认网关:** \`$gw\`"
+    echo "> **$(ss::msg MSG_NET_LABEL_DEFAULT_GW):** \`$gw\`"
 else
-    echo "> ⚠️ **未检测到默认网关**，本机可能无法访问外部网络"
+    echo "> $(ss::msg MSG_NET_WARN_NO_GW)"
 fi
 echo ""
 
 # ==============================================================================
 # 3. 连通性探测（ICMP 延迟与丢包）
 # ==============================================================================
-ss::progress 3 8 "连通性探测"
-echo "## 3. 连通性探测 (ICMP)"
+ss::progress 3 8 "$(ss::msg MSG_NET_SECTION_PING)"
+echo "## 3. $(ss::msg MSG_NET_SECTION_PING)"
 echo ""
-echo "> **评估标准:** 丢包率 > 0% 需关注，> 20% 严重；平均延迟 < 50ms 良好，> 100ms 偏高"
+echo "> **$(ss::msg MSG_NET_PING_CRITERIA):** $(ss::msg MSG_NET_PING_CRITERIA_DESC)"
 echo ""
-echo "| 目标 | 是否可达 | 丢包率 | 最小(ms) | 平均(ms) | 最大(ms) |"
+echo "| $(ss::msg MSG_NET_PING_HDR) |"
 echo "|------|----------|--------|----------|----------|----------|"
 
 for target in $PING_TARGETS; do
@@ -175,7 +175,7 @@ for target in $PING_TARGETS; do
     fi
 
     if [ -z "$result" ]; then
-        printf "| %s | 🔴 不可达 | - | - | - | - |\n" "$target"
+        printf "| %s | $(ss::msg MSG_NET_STATUS_UNREACHABLE) | - | - | - | - |\n" "$target"
         continue
     fi
 
@@ -199,11 +199,11 @@ for target in $PING_TARGETS; do
 
     loss_num=$(echo "$loss" | sed 's/%//')
     if [ -n "$loss_num" ] && [ "$(echo "$loss_num > 20" | bc 2>/dev/null || echo 0)" = "1" ]; then
-        reach="🔴 严重丢包"
+        reach="$(ss::msg MSG_NET_STATUS_SEVERE_LOSS)"
     elif [ -n "$loss_num" ] && [ "$(echo "$loss_num > 0" | bc 2>/dev/null || echo 0)" = "1" ]; then
-        reach="🟡 轻微丢包"
+        reach="$(ss::msg MSG_NET_STATUS_MINOR_LOSS)"
     else
-        reach="🟢 正常"
+        reach="$(ss::msg MSG_NET_STATUS_NORMAL)"
     fi
 
     printf "| %s | %s | %s | %s | %s | %s |\n" "$target" "$reach" "${loss:-N/A}" "${min:-N/A}" "${avg:-N/A}" "${max:-N/A}"
@@ -213,19 +213,19 @@ echo ""
 # ==============================================================================
 # 4. 监听端口与服务
 # ==============================================================================
-ss::progress 4 8 "监听端口与服务"
-echo "## 4. 监听端口与服务"
+ss::progress 4 8 "$(ss::msg MSG_NET_SECTION_PORT)"
+echo "## 4. $(ss::msg MSG_NET_SECTION_PORT)"
 echo ""
 
 if command -v ss >/dev/null 2>&1 && [ "$OS_TYPE" != "Darwin" ]; then
-    echo "| 协议 | 本地地址:端口 | 进程 |"
+    echo "| $(ss::msg MSG_NET_PORT_HDR) |"
     echo "|------|---------------|------|"
     ss -tulnp 2>/dev/null | tail -n +2 | while read -r proto recvq sendq local foreign state pid prog; do
         printf "| %s | %s | %s |\n" "$proto" "$local" "${prog:-N/A}"
     done
     echo ""
 elif command -v netstat >/dev/null 2>&1; then
-    echo "| 协议 | 本地地址:端口 | 进程 |"
+    echo "| $(ss::msg MSG_NET_PORT_HDR) |"
     echo "|------|---------------|------|"
     if [ "$OS_TYPE" = "Darwin" ]; then
         netstat -an -p tcp 2>/dev/null | grep LISTEN | while read -r proto recvq sendq local foreign state; do
@@ -241,15 +241,15 @@ elif command -v netstat >/dev/null 2>&1; then
     fi
     echo ""
 else
-    echo "> ⚠️ 未找到 ss/netstat 工具，无法列举监听端口"
+    echo "> $(ss::msg MSG_NET_WARN_NO_SS_NETSTAT)"
     echo ""
 fi
 
 # ==============================================================================
 # 5. 活跃连接与连接数统计
 # ==============================================================================
-ss::progress 5 8 "活跃连接与连接数统计"
-echo "## 5. 活跃连接与连接数统计"
+ss::progress 5 8 "$(ss::msg MSG_NET_SECTION_CONN)"
+echo "## 5. $(ss::msg MSG_NET_SECTION_CONN)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -273,30 +273,30 @@ else
 fi
 
 # 连接数压力判定
-conn_status="🟢 正常"
-conn_note="TCP 连接状态分布正常"
+conn_status="$(ss::msg MSG_NET_STATUS_NORMAL)"
+conn_note="$(ss::msg MSG_NET_CONN_NOTE_NORMAL)"
 if [ "$close_wait" -gt 100 ]; then
-    conn_status="🔴 异常"
-    conn_note="CLOSE_WAIT 高达 ${close_wait}，存在连接未正确释放（代码 Bug / 服务假死）"
+    conn_status="$(ss::msg MSG_NET_STATUS_ABNORMAL)"
+    conn_note="$(ss::msgf MSG_NET_CONN_NOTE_CLOSE_WAIT "$close_wait")"
 elif [ "$time_wait" -gt 10000 ]; then
-    conn_status="🟡 偏高"
-    conn_note="TIME_WAIT 高达 ${time_wait}，可能需调整 tcp_tw_reuse 等内核参数"
+    conn_status="$(ss::msg MSG_NET_STATUS_HIGH)"
+    conn_note="$(ss::msgf MSG_NET_CONN_NOTE_TIME_WAIT "$time_wait")"
 fi
 
-echo "| 指标 | 数量 | 状态 |"
+echo "| $(ss::msg MSG_NET_CONN_HDR) |"
 echo "|------|------|------|"
-echo "| 总连接数 (tcp/udp) | ${total_conn} | - |"
+echo "| $(ss::msg MSG_NET_ROW_TOTAL_CONN) | ${total_conn} | - |"
 echo "| ESTABLISHED | ${est} | - |"
 echo "| TIME_WAIT | ${time_wait} | - |"
 echo "| CLOSE_WAIT | ${close_wait} | - |"
 echo "| FIN_WAIT | ${fin_wait} | - |"
-echo "| 综合评估 | - | ${conn_status} |"
+echo "| $(ss::msg MSG_NET_ROW_EVAL) | - | ${conn_status} |"
 echo ""
 echo "> $conn_note"
 echo ""
 
 # 按远程 IP 统计 TOP 连接（定位异常流量来源）
-echo "### 外部连接 Top10 (按远程 IP)"
+echo "### $(ss::msg MSG_NET_SUBSECTION_TOP10)"
 echo ""
 if [ "$OS_TYPE" = "Darwin" ]; then
     echo "$conn_out" | grep -iE "ESTABLISHED" | awk '{print $5}' | grep -oE '^[0-9.]+' | sort | uniq -c | sort -rn | head -10 | while read -r cnt ip; do
@@ -308,15 +308,15 @@ else
     done
 fi
 echo ""
-echo "| 远程 IP | 连接数 |"
+echo "| $(ss::msg MSG_NET_REMOTE_IP_HDR) |"
 echo "|---------|--------|"
 echo ""
 
 # ==============================================================================
 # 6. DNS 解析测试
 # ==============================================================================
-ss::progress 6 8 "DNS 解析测试"
-echo "## 6. DNS 解析测试"
+ss::progress 6 8 "$(ss::msg MSG_NET_SECTION_DNS)"
+echo "## 6. $(ss::msg MSG_NET_SECTION_DNS)"
 echo ""
 
 # 当前 DNS 服务器
@@ -325,10 +325,10 @@ if [ "$OS_TYPE" = "Darwin" ]; then
 else
     dns_servers=$(awk '/^nameserver/ {print $2}' /etc/resolv.conf 2>/dev/null | tr '\n' ' ')
 fi
-echo "> **当前 DNS 服务器:** ${dns_servers:-N/A}"
+echo "> **$(ss::msg MSG_NET_LABEL_CURRENT_DNS):** ${dns_servers:-N/A}"
 echo ""
 
-echo "| 域名 | 解析结果 | 耗时(ms) | 状态 |"
+echo "| $(ss::msg MSG_NET_DNS_HDR) |"
 echo "|------|----------|----------|------|"
 for domain in $DNS_TARGETS; do
     start_ts=$(date +%s%3N 2>/dev/null || date +%s)
@@ -342,9 +342,9 @@ for domain in $DNS_TARGETS; do
     end_ts=$(date +%s%3N 2>/dev/null || date +%s)
     cost=$((end_ts - start_ts))
     if [ -n "$resolved" ]; then
-        printf "| %s | %s | %s | 🟢 正常 |\n" "$domain" "$resolved" "$cost"
+        printf "| %s | %s | %s | $(ss::msg MSG_NET_DNS_RESOLVED) |\n" "$domain" "$resolved" "$cost"
     else
-        printf "| %s | 解析失败 | %s | 🔴 失败 |\n" "$domain" "$cost"
+        printf "| %s | $(ss::msg MSG_NET_DNS_FAILED) | %s | $(ss::msg MSG_NET_DNS_FAIL_STATUS) |\n" "$domain" "$cost"
     fi
 done
 echo ""
@@ -352,13 +352,13 @@ echo ""
 # ==============================================================================
 # 7. 网卡流量统计（累计收发包/字节）
 # ==============================================================================
-ss::progress 7 8 "网卡流量统计"
-echo "## 7. 网卡流量统计"
+ss::progress 7 8 "$(ss::msg MSG_NET_SECTION_TRAFFIC)"
+echo "## 7. $(ss::msg MSG_NET_SECTION_TRAFFIC)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS 通过 netstat -ib 获取每接口收发统计
-    echo "| 接口 | 接收包 | 发送包 | 接收字节 | 发送字节 | 错误/丢包 |"
+    echo "| $(ss::msg MSG_NET_TRAFFIC_HDR_MAC) |"
     echo "|------|--------|--------|----------|----------|-----------|"
     netstat -ib 2>/dev/null | awk 'NR>1 && $1!="Name" && $1!~/(lo|gif|stf|bridge|vnic)/ {
         iface=$1
@@ -369,10 +369,10 @@ if [ "$OS_TYPE" = "Darwin" ]; then
         printf "| %s | %s | %s | %s | %s | %s |\n", iface, rx_pkt, tx_pkt, rx_byte, tx_byte, err
     }' | head -20
     echo ""
-    echo "> ℹ️ macOS 不提供 /proc/net/dev 等价物，流量为累计值（重启后清零）"
+    echo "> $(ss::msg MSG_NET_TRAFFIC_NOTE_MAC)"
     echo ""
 else
-    echo "| 接口 | 接收包 | 发送包 | 接收字节 | 发送字节 | 收错 | 发包丢 |"
+    echo "| $(ss::msg MSG_NET_TRAFFIC_HDR_LNX) |"
     echo "|------|--------|--------|----------|----------|------|--------|"
     while read -r iface rest; do
         [ "$iface" = "Inter-|" ] && continue
@@ -396,31 +396,31 @@ fi
 # ==============================================================================
 # 8. 网络相关内核参数（TCP 调优与防护）
 # ==============================================================================
-ss::progress 8 8 "网络内核参数"
-echo "## 8. 网络内核参数"
+ss::progress 8 8 "$(ss::msg MSG_NET_SECTION_KERNEL)"
+echo "## 8. $(ss::msg MSG_NET_SECTION_KERNEL)"
 echo ""
 
 if [ "$OS_TYPE" = "Darwin" ]; then
-    echo "> ℹ️ macOS 网络参数与 Linux 差异较大（sysctl net.inet.tcp.*），此处仅展示关键项"
+    echo "> $(ss::msg MSG_NET_KERNEL_NOTE_MAC)"
     echo ""
-    echo "| 参数 | 值 |"
+    echo "| $(ss::msg MSG_NET_KERNEL_HDR_MAC) |"
     echo "|------|-----|"
     echo "| net.inet.tcp.msl | $(ss::read_sysctl net.inet.tcp.msl) |"
     echo "| kern.ipc.somaxconn | $(ss::read_sysctl kern.ipc.somaxconn) |"
     echo ""
 else
-    echo "| 参数 | 值 | 说明 |"
+    echo "| $(ss::msg MSG_NET_KERNEL_HDR_LNX) |"
     echo "|------|-----|------|"
     tw_reuse=$(cat /proc/sys/net/ipv4/tcp_tw_reuse 2>/dev/null)
-    tw_recycle=$(cat /proc/sys/net/ipv4/tcp_tw_recycle 2>/dev/null || echo "N/A(新内核已移除)")
+    tw_recycle=$(cat /proc/sys/net/ipv4/tcp_tw_recycle 2>/dev/null || echo "N/A($(ss::msg MSG_NET_KERNEL_TW_RECYCLE_REMOVED))")
     somaxconn=$(cat /proc/sys/net/core/somaxconn 2>/dev/null)
     max_conn=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || cat /proc/sys/net/nf_conntrack_max 2>/dev/null || echo "N/A")
-    echo "| net.ipv4.tcp_tw_reuse | ${tw_reuse:-N/A} | 1=快速复用 TIME_WAIT 端口 |"
-    echo "| net.ipv4.tcp_tw_recycle | ${tw_recycle} | 已废弃，建议保持 0 |"
-    echo "| net.core.somaxconn | ${somaxconn:-N/A} | 单监听套接字全连接队列上限 |"
-    echo "| nf_conntrack_max | ${max_conn} | 连接跟踪表上限（NAT 场景关键） |"
+    echo "| net.ipv4.tcp_tw_reuse | ${tw_reuse:-N/A} | $(ss::msg MSG_NET_KERNEL_DESC_TW_REUSE) |"
+    echo "| net.ipv4.tcp_tw_recycle | ${tw_recycle} | $(ss::msg MSG_NET_KERNEL_DESC_TW_RECYCLE) |"
+    echo "| net.core.somaxconn | ${somaxconn:-N/A} | $(ss::msg MSG_NET_KERNEL_DESC_SOMAXCONN) |"
+    echo "| nf_conntrack_max | ${max_conn} | $(ss::msg MSG_NET_KERNEL_DESC_CONNTRACK) |"
     echo ""
-    echo "> 💡 若 TIME_WAIT 偏高，可将 \`tcp_tw_reuse=1\`；若 CLOSE_WAIT 偏高，需排查应用层连接释放逻辑。"
+    echo "> $(ss::msg MSG_NET_KERNEL_TIP)"
     echo ""
 fi
 
@@ -429,12 +429,12 @@ fi
 # ==============================================================================
 echo "---"
 echo ""
-echo "## 附录：分析建议"
+echo "## $(ss::msg MSG_NET_APPENDIX)"
 echo ""
-echo "将此报告粘贴给大模型时，可附加以下提示词："
+echo "$(ss::msg MSG_NET_APPENDIX_HINT)"
 echo ""
 echo '```'
-echo "请分析以下网络报告，重点关注："
+echo "$(ss::msg MSG_NET_APPENDIX_PROMPT)"
 echo "1. ICMP 探测的丢包率与延迟是否异常，是否为单一目标还是普遍问题"
 echo "2. CLOSE_WAIT / TIME_WAIT 是否过高，是否存在连接泄漏"
 echo "3. 监听端口是否有异常暴露，是否有非预期进程监听"
@@ -443,14 +443,14 @@ echo "5. 网卡是否有错误/丢包计数持续增长"
 echo "6. 给出具体的排查命令或内核参数调优建议"
 echo '```'
 echo ""
-echo "> 📄 **报告已保存至:** \`$REPORT_PATH\`"
+echo "> $(ss::msg MSG_NET_REPORT_SAVED) \`$REPORT_PATH\`"
 
 # 报告结束
 ss::report_end "$REPORT_PATH"
 
 # JSON 输出
 if [ "$JSON_OUTPUT" = "true" ]; then
-    summary="网络接口与连通性分析完成"
+    summary="$(ss::msg MSG_NET_JSON_SUMMARY)"
     ss::print_json_metadata "success" "$REPORT_PATH" "network_analyzer.sh" 0 "$summary" ""
 fi
 

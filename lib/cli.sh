@@ -32,7 +32,7 @@ ss::parse_common_args() {
                 REPORT_PATH="${args[$((i + 1))]}"
                 i=$((i + 2))
             else
-                ss::log_error "错误: -o/--output 需要指定路径参数"
+                ss::log_error "$(ss::msgf MSG_ERROR_NEED_ARG "-o/--output")"
                 exit 2
             fi
             ;;
@@ -41,7 +41,7 @@ ss::parse_common_args() {
                 CONFIG_FILE="${args[$((i + 1))]}"
                 i=$((i + 2))
             else
-                ss::log_error "错误: -c/--config 需要指定配置文件路径"
+                ss::log_error "$(ss::msgf MSG_ERROR_NEED_ARG "-c/--config")"
                 exit 2
             fi
             ;;
@@ -57,6 +57,20 @@ ss::parse_common_args() {
         --no-color)
             NO_COLOR="true"
             i=$((i + 1))
+            ;;
+        --lang)
+            if [ $((i + 1)) -lt ${#args[@]} ] && [[ "${args[$((i + 1))]}" != -* ]]; then
+                SS_LANG="${args[$((i + 1))]}"
+                # 重新加载语言文件
+                _ss_lang_file="$SCRIPT_DIR/lib/i18n/${SS_LANG}.sh"
+                if [ -f "$_ss_lang_file" ]; then
+                    source "$_ss_lang_file"
+                fi
+                i=$((i + 2))
+            else
+                ss::log_error "$(ss::msgf MSG_ERROR_NEED_ARG "--lang")"
+                exit 2
+            fi
             ;;
         -h | --help)
             # 将 -h/--help 传递给脚本，让脚本在显示帮助时包含脚本特定选项
@@ -81,32 +95,36 @@ ss::print_usage() {
     local script_specific_options="$3"
 
     cat <<EOF
-用法: $script_name [选项]
+$(ss::msg MSG_HELP_USAGE): $script_name [$(ss::msg MSG_HELP_OPTIONS)]
 
 $script_description
 
-公共选项:
-  -o, --output PATH     报告输出路径（覆盖默认路径）
-  -c, --config FILE     指定配置文件（覆盖默认配置文件查找）
-  -q, --quiet           静默模式（只输出报告路径一行，供 Agent 解析）
-      --json            在 stdout 输出一行 JSON 元数据（供 Agent 程序化消费）
-      --no-color        禁用 ANSI 颜色（Agent 调用时必需）
-  -h, --help            显示此帮助信息
+$(ss::msg MSG_HELP_COMMON_OPTIONS):
+  -o, --output PATH     $(ss::msg MSG_HELP_OUTPUT)
+  -c, --config FILE     $(ss::msg MSG_HELP_CONFIG)
+  -q, --quiet           $(ss::msg MSG_HELP_QUIET)
+      --json            $(ss::msg MSG_HELP_JSON)
+      --no-color        $(ss::msg MSG_HELP_NO_COLOR)
+      --lang LANG       $(ss::msg MSG_HELP_LANG)
+  -h, --help            $(ss::msg MSG_HELP_HELP)
 
 $script_specific_options
 
-示例:
-  # 基本用法
+$(ss::msg MSG_HELP_EXAMPLES):
+  # $(ss::msg MSG_HELP_EXAMPLE_BASIC)
   $script_name
 
-  # 自定义输出路径
+  # $(ss::msg MSG_HELP_EXAMPLE_OUTPUT)
   $script_name -o /tmp/custom_report.md
 
-  # 静默模式（供 Agent 使用）
+  # $(ss::msg MSG_HELP_EXAMPLE_QUIET)
   $script_name --quiet
 
-  # JSON 输出（供 Agent 程序化消费）
+  # $(ss::msg MSG_HELP_EXAMPLE_JSON)
   $script_name --json
+
+  # $(ss::msg MSG_HELP_EXAMPLE_LANG)
+  SS_LANG=en_US $script_name
 
 EOF
 }

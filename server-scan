@@ -11,6 +11,9 @@ set -euo pipefail
 # 获取脚本目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# 加载共享库（含 i18n）
+source "$SCRIPT_DIR/lib/common.sh"
+
 # 版本信息
 VERSION="1.0.0"
 
@@ -19,43 +22,44 @@ VERSION="1.0.0"
 # ==============================================================================
 print_help() {
     cat <<EOF
-用法: server-scan <子命令> [选项]
+$(ss::msg MSG_HELP_USAGE): server-scan <$(ss::msg MSG_HELP_OPTIONS)> $(ss::msg MSG_HELP_EXAMPLES)
 
-服务器性能诊断工具集，提供一站式系统瓶颈分析。
+$(ss::msg MSG_SCAN_DESC)
 
-子命令:
-  overview        系统瓶颈总览（CPU / 内存 / 磁盘 / 网络快速扫描）
-  cpu-mem         CPU 与内存专项深度分析
-  disk            磁盘专项深度分析（空间 / I/O / inode / 大文件 / Docker）
-  network         网络专项排查（接口 / 连通性 / 连接数 / DNS）
-  all             依次执行所有诊断脚本
+$(ss::msg MSG_HELP_USAGE):
+  overview        $(ss::msg MSG_SCAN_SUBCMD_OVERVIEW)
+  cpu-mem         $(ss::msg MSG_SCAN_SUBCMD_CPUMEM)
+  disk            $(ss::msg MSG_SCAN_SUBCMD_DISK)
+  network         $(ss::msg MSG_SCAN_SUBCMD_NETWORK)
+  all             $(ss::msg MSG_SCAN_SUBCMD_ALL)
 
-公共选项:
-  -o, --output PATH     报告输出路径（覆盖默认路径）
-  -c, --config FILE     指定配置文件（覆盖默认配置文件查找）
-  -q, --quiet           静默模式（只输出报告路径一行，供 Agent 解析）
-      --json            在 stdout 输出一行 JSON 元数据（供 Agent 程序化消费）
-      --no-color        禁用 ANSI 颜色（Agent 调用时必需）
-  -h, --help            显示此帮助信息
-  -v, --version         显示版本信息
+$(ss::msg MSG_HELP_COMMON_OPTIONS):
+  -o, --output PATH     $(ss::msg MSG_HELP_OUTPUT)
+  -c, --config FILE     $(ss::msg MSG_HELP_CONFIG)
+  -q, --quiet           $(ss::msg MSG_HELP_QUIET)
+      --json            $(ss::msg MSG_HELP_JSON)
+      --no-color        $(ss::msg MSG_HELP_NO_COLOR)
+      --lang LANG       $(ss::msg MSG_HELP_LANG)
+  -h, --help            $(ss::msg MSG_HELP_HELP)
+  -v, --version         $(ss::msg MSG_HELP_VERSION)
 
-示例:
-  # 运行系统瓶颈总览
+$(ss::msg MSG_HELP_EXAMPLES):
+  # $(ss::msg MSG_SCAN_EXAMPLE_OVERVIEW)
   server-scan overview
 
-  # 磁盘专项分析，自定义输出路径
+  # $(ss::msg MSG_SCAN_EXAMPLE_DISK_CUSTOM)
   server-scan disk -o /tmp/disk_report.md
 
-  # 指定目录扫描
+  # $(ss::msg MSG_SCAN_EXAMPLE_DISK_DIR)
   server-scan disk -d /var/log -d /home/user --depth 5
 
-  # 静默模式（供 Agent 使用）
+  # $(ss::msg MSG_SCAN_EXAMPLE_QUIET)
   server-scan overview --quiet
 
-  # JSON 输出（供 Agent 程序化消费）
+  # $(ss::msg MSG_SCAN_EXAMPLE_JSON)
   server-scan overview --json
 
-  # 运行所有诊断
+  # $(ss::msg MSG_SCAN_EXAMPLE_ALL)
   server-scan all
 
 EOF
@@ -77,7 +81,7 @@ check_script() {
     local script_name="$1"
     local script_path="$SCRIPT_DIR/$script_name"
     if [ ! -f "$script_path" ]; then
-        echo "错误: 找不到脚本 $script_path" >&2
+        echo "$(ss::msg MSG_ERROR_SCRIPT_NOT_FOUND) $script_path" >&2
         exit 1
     fi
     if [ ! -x "$script_path" ]; then
@@ -124,7 +128,7 @@ network)
     exec "$SCRIPT_DIR/network_analyzer.sh" "$@"
     ;;
 all)
-    echo "🚀 开始执行所有诊断脚本..."
+    echo "$(ss::msg MSG_SCAN_ALL_START)"
     echo ""
 
     # 传递公共选项给每个脚本（处理空参数情况）
@@ -135,7 +139,7 @@ all)
     fi
 
     echo "=========================================="
-    echo "1/4. 系统瓶颈总览"
+    echo "$(ss::msg MSG_SCAN_STEP_1)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
         "$SCRIPT_DIR/sys_overview.sh" "${SCRIPT_ARGS[@]}" || true
@@ -145,7 +149,7 @@ all)
     echo ""
 
     echo "=========================================="
-    echo "2/4. CPU 与内存专项分析"
+    echo "$(ss::msg MSG_SCAN_STEP_2)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
         "$SCRIPT_DIR/cpu_mem_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
@@ -155,7 +159,7 @@ all)
     echo ""
 
     echo "=========================================="
-    echo "3/4. 磁盘专项分析"
+    echo "$(ss::msg MSG_SCAN_STEP_3)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
         "$SCRIPT_DIR/disk_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
@@ -165,7 +169,7 @@ all)
     echo ""
 
     echo "=========================================="
-    echo "4/4. 网络专项排查"
+    echo "$(ss::msg MSG_SCAN_STEP_4)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
         "$SCRIPT_DIR/network_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
@@ -174,10 +178,10 @@ all)
     fi
     echo ""
 
-    echo "✅ 所有诊断完成！"
+    echo "$(ss::msg MSG_SCAN_ALL_DONE)"
     ;;
 *)
-    echo "错误: 未知子命令 '$SUBCOMMAND'" >&2
+    echo "$(ss::msg MSG_ERROR_UNKNOWN_CMD) '$SUBCOMMAND'" >&2
     echo "" >&2
     print_help
     ;;

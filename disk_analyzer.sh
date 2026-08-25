@@ -116,7 +116,7 @@ while [[ $# -gt 0 ]]; do
             DIR_SCAN_MODE="true"
             shift 2
         else
-            ss::log_error "错误: -d/--dir 需要指定目录参数"
+            ss::log_error "$(ss::msg MSG_DISK_ERR_DIR_ARG)"
             exit 2
         fi
         ;;
@@ -125,7 +125,7 @@ while [[ $# -gt 0 ]]; do
             SCAN_DEPTH="$2"
             shift 2
         else
-            ss::log_error "错误: --depth 需要指定数字参数"
+            ss::log_error "$(ss::msg MSG_DISK_ERR_DEPTH_ARG)"
             exit 2
         fi
         ;;
@@ -134,21 +134,21 @@ while [[ $# -gt 0 ]]; do
             SCAN_TOP="$2"
             shift 2
         else
-            ss::log_error "错误: --top 需要指定数字参数"
+            ss::log_error "$(ss::msg MSG_DISK_ERR_TOP_ARG)"
             exit 2
         fi
         ;;
     -h | --help)
-        ss::print_usage "$(basename "$0")" "磁盘专项深度分析" "  -d, --dir DIR       指定扫描目录（可多次指定或使用空格分隔多个目录）
-  --depth N           子目录扫描深度（默认: 3）
-  --top N             显示 Top N 结果（默认: 20）"
+        ss::print_usage "$(basename "$0")" "$(ss::msg MSG_DISK_HELP_DESC)" "  -d, --dir DIR       $(ss::msg MSG_DISK_HELP_DIR)
+  --depth N           $(ss::msg MSG_DISK_HELP_DEPTH)
+  --top N             $(ss::msg MSG_DISK_HELP_TOP)"
         exit 0
         ;;
     *)
-        ss::log_error "错误: 未知参数 '$1'"
-        ss::print_usage "$(basename "$0")" "磁盘专项深度分析" "  -d, --dir DIR       指定扫描目录（可多次指定或使用空格分隔多个目录）
-  --depth N           子目录扫描深度（默认: 3）
-  --top N             显示 Top N 结果（默认: 20）"
+        ss::log_error "$(ss::msgf MSG_ERROR_UNKNOWN_ARG "$1")"
+        ss::print_usage "$(basename "$0")" "$(ss::msg MSG_DISK_HELP_DESC)" "  -d, --dir DIR       $(ss::msg MSG_DISK_HELP_DIR)
+  --depth N           $(ss::msg MSG_DISK_HELP_DEPTH)
+  --top N             $(ss::msg MSG_DISK_HELP_TOP)"
         exit 2
         ;;
     esac
@@ -162,12 +162,12 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
         if [ -d "$dir" ]; then
             valid_dirs+=("$dir")
         else
-            ss::log_warn "警告: 目录 '$dir' 不存在，已跳过"
+            ss::log_warn "$(ss::msgf MSG_DISK_WARN_DIR_SKIP "$dir")"
         fi
     done
 
     if [ ${#valid_dirs[@]} -eq 0 ]; then
-        ss::die "错误: 没有有效的扫描目录" 2
+        ss::die "$(ss::msg MSG_ERROR_NO_VALID_DIR)" 2
     fi
 
     SCAN_DIRS=("${valid_dirs[@]}")
@@ -188,18 +188,18 @@ fi
 
 # 报告开始（打开 fd3，重定向 stdout 到临时文件）
 if [ "$DIR_SCAN_MODE" = "true" ]; then
-    ss::report_begin "指定目录扫描开始 (共 ${#SCAN_DIRS[@]} 个目录)" "${#SCAN_DIRS[@]}"
+    ss::report_begin "$(ss::msg MSG_DISK_REPORT_TITLE) - $(ss::msg MSG_DISK_SCAN_MODE_DIR)" "${#SCAN_DIRS[@]}"
 else
-    ss::report_begin "磁盘深度分析" 10
+    ss::report_begin "$(ss::msg MSG_DISK_REPORT_TITLE)" 10
 fi
 
 # ==============================================================================
 # Markdown 报告头
 # ==============================================================================
 if [ "$DIR_SCAN_MODE" = "true" ]; then
-    echo "# 指定目录空间占用分析报告"
+    echo "# $(ss::msg MSG_DISK_TITLE_DIR)"
 else
-    echo "# 磁盘深度分析报告"
+    echo "# $(ss::msg MSG_DISK_TITLE)"
 fi
 echo ""
 if [ "$OS_TYPE" = "Darwin" ]; then
@@ -207,18 +207,18 @@ if [ "$OS_TYPE" = "Darwin" ]; then
 else
     OS_NAME="$(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'"' -f2)"
 fi
-echo "> **主机名:** $(hostname)  "
-echo "> **采集时间:** $(date '+%Y-%m-%d %H:%M:%S')  "
-echo "> **报告文件:** \`$REPORT_PATH\`  "
-echo "> **操作系统:** ${OS_NAME}  "
-echo "> **内核版本:** $(uname -r)  "
+echo "> **$(ss::msg MSG_COMMON_HOSTNAME):** $(hostname)  "
+echo "> **$(ss::msg MSG_COMMON_COLLECT_TIME):** $(date '+%Y-%m-%d %H:%M:%S')  "
+echo "> **$(ss::msg MSG_COMMON_REPORT_FILE):** \`$REPORT_PATH\`  "
+echo "> **$(ss::msg MSG_COMMON_OS):** ${OS_NAME}  "
+echo "> **$(ss::msg MSG_COMMON_KERNEL):** $(uname -r)  "
 if [ "$DIR_SCAN_MODE" = "true" ]; then
-    echo "> **扫描模式:** 指定目录扫描  "
-    echo "> **目标目录:** ${SCAN_DIRS[*]}  "
-    echo "> **扫描深度:** $SCAN_DEPTH  "
-    echo "> **Top N:** $SCAN_TOP  "
+    echo "> **$(ss::msg MSG_DISK_ROW_SCAN_MODE):** $(ss::msg MSG_DISK_SCAN_MODE_DIR)  "
+    echo "> **$(ss::msg MSG_DISK_ROW_TARGET_DIRS):** ${SCAN_DIRS[*]}  "
+    echo "> **$(ss::msg MSG_DISK_ROW_SCAN_DEPTH):** $SCAN_DEPTH  "
+    echo "> **$(ss::msg MSG_DISK_ROW_TOP_N):** $SCAN_TOP  "
 else
-    echo "> **扫描模式:** 全盘扫描  "
+    echo "> **$(ss::msg MSG_DISK_ROW_SCAN_MODE):** $(ss::msg MSG_DISK_SCAN_MODE_FULL)  "
 fi
 echo ""
 echo "---"
@@ -236,34 +236,34 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
         local dir_index="$2"
         local total_dirs="$3"
 
-        ss::progress "$dir_index" "$total_dirs" "扫描目录: $target_dir"
+        ss::progress "$dir_index" "$total_dirs" "$(ss::msg MSG_DISK_DIR_SCANNING): $target_dir"
 
         echo "## 目录: \`$target_dir\`"
         echo ""
 
         # 检查目录权限
         if [ ! -r "$target_dir" ]; then
-            echo "> ⚠️ **权限不足**，无法读取目录内容"
+            echo "> ⚠️ **$(ss::msg MSG_DISK_DIR_PERM_DENIED)**"
             echo ""
             return 1
         fi
 
         # 1. 目录总大小
-        echo "### 1. 目录总大小"
+        echo "### 1. $(ss::msg MSG_DISK_SUBSEC_TOTAL_SIZE)"
         echo ""
         local total_size_kb
         total_size_kb=$(du -sk "$target_dir" 2>/dev/null | awk '{print $1}')
         if [ -n "$total_size_kb" ]; then
-            echo "> **总大小:** $(ss::hr_kb "$total_size_kb")"
+            echo "> **$(ss::msg MSG_DISK_TOTAL_SIZE):** $(ss::hr_kb "$total_size_kb")"
         else
-            echo "> ⚠️ 无法计算目录总大小（可能权限不足）"
+            echo "> ⚠️ $(ss::msg MSG_DISK_CANNOT_CALC_SIZE)"
         fi
         echo ""
 
         # 2. 子目录 Top N（按大小排序）
-        echo "### 2. 子目录 Top $SCAN_TOP（按大小排序）"
+        echo "### 2. $(ss::msgf MSG_DISK_SUBSEC_SUBDIRS "$SCAN_TOP")"
         echo ""
-        echo "| 排名 | 大小 | 子目录 |"
+        echo "| $(ss::msg MSG_DISK_COL_RANK) | $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_SUBDIR) |"
         echo "|------|------|--------|"
 
         local depth_arg
@@ -293,15 +293,15 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
                 fi
             done <"$tmp_subdirs"
         else
-            echo "> ℹ️ 未找到子目录或权限不足"
+            echo "> ℹ️ $(ss::msg MSG_DISK_NO_SUBDIRS)"
         fi
         rm -f "$tmp_subdirs"
         echo ""
 
         # 3. 大文件 Top N
-        echo "### 3. 大文件 Top $SCAN_TOP"
+        echo "### 3. $(ss::msgf MSG_DISK_SUBSEC_LARGE_FILES "$SCAN_TOP")"
         echo ""
-        echo "| 排名 | 大小 | 文件路径 |"
+        echo "| $(ss::msg MSG_DISK_COL_RANK) | $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_FILE_PATH) |"
         echo "|------|------|----------|"
 
         local tmp_files
@@ -319,15 +319,15 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
                 rank=$((rank + 1))
             done <"$tmp_files"
         else
-            echo "> ℹ️ 未找到文件或权限不足"
+            echo "> ℹ️ $(ss::msg MSG_DISK_NO_FILES)"
         fi
         rm -f "$tmp_files"
         echo ""
 
         # 4. 文件类型分布统计
-        echo "### 4. 文件类型分布（按扩展名统计）"
+        echo "### 4. $(ss::msg MSG_DISK_SUBSEC_FILE_TYPES)"
         echo ""
-        echo "| 扩展名 | 文件数量 | 总大小 | 占比 |"
+        echo "| $(ss::msg MSG_DISK_COL_EXTENSION) | $(ss::msg MSG_DISK_COL_FILE_COUNT) | $(ss::msg MSG_DISK_COL_TOTAL_SIZE) | $(ss::msg MSG_TABLE_RATIO) |"
         echo "|--------|----------|--------|------|"
 
         local tmp_types
@@ -338,7 +338,7 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
             local ext="${file##*.}"
             # 如果没有扩展名，标记为 [无扩展名]
             if [ "$ext" = "$file" ]; then
-                ext="[无扩展名]"
+                ext="[$(ss::msg MSG_DISK_NO_EXT)]"
             fi
             local size_kb
             size_kb=$(du -k "$file" 2>/dev/null | awk '{print $1}')
@@ -364,15 +364,15 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
                 echo "| \`$ext\` | $count | $(ss::hr_kb "$size_kb") | $pct |"
             done <"$tmp_types"
         else
-            echo "> ℹ️ 未找到文件或权限不足"
+            echo "> ℹ️ $(ss::msg MSG_DISK_NO_FILES)"
         fi
         rm -f "$tmp_types"
         echo ""
 
         # 5. 深度分析（可选，显示各层级目录大小）
-        echo "### 5. 目录层级分析"
+        echo "### 5. $(ss::msg MSG_DISK_SUBSEC_HIERARCHY)"
         echo ""
-        echo "| 层级 | 大小 | 目录 |"
+        echo "| $(ss::msg MSG_DISK_COL_LEVEL) | $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_DIRECTORY) |"
         echo "|------|------|------|"
 
         local tmp_levels
@@ -395,7 +395,7 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
                 echo "| $depth | $(ss::hr_kb "$size_kb") | \`$path\` |"
             done <"$tmp_levels"
         else
-            echo "> ℹ️ 未找到子目录或权限不足"
+            echo "> ℹ️ $(ss::msg MSG_DISK_NO_SUBDIRS)"
         fi
         rm -f "$tmp_levels"
         echo ""
@@ -427,15 +427,15 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 1. 磁盘基础信息
     # ==============================================================================
-    ss::progress 1 10 "磁盘基础信息"
-    echo "## 1. 磁盘基础信息"
+    ss::progress 1 10 "$(ss::msg MSG_DISK_SECTION_BASIC)"
+    echo "## 1. $(ss::msg MSG_DISK_SECTION_BASIC)"
     echo ""
 
     if [ "$OS_TYPE" = "Darwin" ]; then
         # macOS 使用 diskutil list 获取磁盘概览
-        echo "### 块设备列表 (diskutil)"
+        echo "### $(ss::msg MSG_DISK_BLOCK_DEVICE_LIST) (diskutil)"
         echo ""
-        echo "| 设备 | 类型 | 大小 | 说明 |"
+        echo "| $(ss::msg MSG_DISK_COL_DEVICE) | $(ss::msg MSG_DISK_COL_TYPE) | $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_DESC) |"
         echo "|------|------|------|------|"
         if command -v diskutil >/dev/null 2>&1; then
             diskutil list 2>/dev/null | awk '
@@ -462,17 +462,17 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
             }
         '
         else
-            echo "> ⚠️ 无法获取 macOS 块设备列表（diskutil 不可用）"
+            echo "> ⚠️ $(ss::msg MSG_DISK_MACOS_NO_BLOCK_DEV)"
         fi
         echo ""
-        echo "> ℹ️ macOS 不暴露 /sys/block，无法读取 I/O 调度器"
+        echo "> ℹ️ $(ss::msg MSG_DISK_MACOS_NO_SCHEDULER)"
         echo ""
     else
         # Linux: lsblk 列出所有块设备，-d 不显示从属关系，-o 指定输出列
         # 关键信息: 设备名、大小、类型(disk/part/lvm)、挂载点、模型
-        echo "### 块设备列表"
+        echo "### $(ss::msg MSG_DISK_BLOCK_DEVICE_LIST)"
         echo ""
-        echo "| 设备名 | 容量 | 类型 | 旋转介质 | 型号 | 挂载点 |"
+        echo "| $(ss::msg MSG_DISK_COL_DEVICE) | $(ss::msg MSG_DISK_COL_CAPACITY) | $(ss::msg MSG_DISK_COL_TYPE) | $(ss::msg MSG_DISK_COL_ROTATIONAL) | $(ss::msg MSG_DISK_COL_MODEL) | $(ss::msg MSG_DISK_COL_MOUNTPOINT) |"
         echo "|--------|------|------|----------|------|--------|"
         lsblk -d -o NAME,SIZE,TYPE,ROTA,MODEL,MOUNTPOINT 2>/dev/null | tail -n +2 | while read -r name size type rota model mount; do
             # 判断旋转介质: ROTA=1 为机械硬盘(HDD)，ROTA=0 为固态硬盘(SSD/NVMe)
@@ -486,9 +486,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         echo ""
 
         # 显示当前 I/O 调度器，影响磁盘性能表现
-        echo "### I/O 调度器"
+        echo "### $(ss::msg MSG_DISK_IO_SCHEDULER)"
         echo ""
-        echo "| 设备 | 当前调度器 |"
+        echo "| $(ss::msg MSG_DISK_COL_DEVICE) | $(ss::msg MSG_DISK_COL_CURRENT_SCHEDULER) |"
         echo "|------|-------------|"
         for disk in $(lsblk -d -o NAME 2>/dev/null | grep -v NAME); do
             if [ -f /sys/block/$disk/queue/scheduler ]; then
@@ -503,13 +503,13 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 2. 磁盘空间使用情况
     # ==============================================================================
-    ss::progress 2 10 "磁盘空间使用情况"
-    echo "## 2. 磁盘空间使用情况"
+    ss::progress 2 10 "$(ss::msg MSG_DISK_SECTION_USAGE)"
+    echo "## 2. $(ss::msg MSG_DISK_SECTION_USAGE)"
     echo ""
-    echo "> **评估标准:** 使用率 < ${DISK_USAGE_WARNING_THRESHOLD}% 健康，${DISK_USAGE_WARNING_THRESHOLD}%~${DISK_USAGE_CRITICAL_THRESHOLD}% 警告，> ${DISK_USAGE_CRITICAL_THRESHOLD}% 危险"
+    echo "> **$(ss::msg MSG_DISK_EVAL_CRITERIA):** $(ss::msgf MSG_DISK_EVAL_DISK_USAGE "$DISK_USAGE_WARNING_THRESHOLD" "$DISK_USAGE_CRITICAL_THRESHOLD")"
     echo ""
     # 告警阈值: >${DISK_USAGE_WARNING_THRESHOLD}% 警告，>${DISK_USAGE_CRITICAL_THRESHOLD}% 危险
-    echo "| 文件系统 | 类型 | 总量 | 已用 | 可用 | 使用率 | 挂载点 | 状态 |"
+    echo "| $(ss::msg MSG_DISK_COL_FS) | $(ss::msg MSG_DISK_COL_TYPE) | $(ss::msg MSG_DISK_COL_TOTAL) | $(ss::msg MSG_DISK_COL_USED) | $(ss::msg MSG_DISK_COL_AVAILABLE) | $(ss::msg MSG_DISK_COL_USAGE) | $(ss::msg MSG_DISK_COL_MOUNTPOINT) | $(ss::msg MSG_TABLE_STATUS) |"
     echo "|----------|------|------|------|------|--------|--------|------|"
     if [ "$OS_TYPE" = "Darwin" ]; then
         # macOS df -h 格式: Filesystem Size Used Avail Capacity iused ifree %iused Mounted on
@@ -517,11 +517,11 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         df -h 2>/dev/null | grep -E '^/dev/' | while read -r fs size used avail capacity iused ifree ipct mount; do
             use_num=$(echo "$capacity" | sed 's/%//')
             if [ "$use_num" -ge "$DISK_USAGE_CRITICAL_THRESHOLD" ]; then
-                status="🔴 危险"
+                status="$(ss::msg MSG_STATUS_DANGER)"
             elif [ "$use_num" -ge "$DISK_USAGE_WARNING_THRESHOLD" ]; then
-                status="🟡 警告"
+                status="$(ss::msg MSG_STATUS_WARNING)"
             else
-                status="🟢 健康"
+                status="$(ss::msg MSG_STATUS_HEALTHY)"
             fi
             # 用 mount 命令补全文件系统类型（macOS 格式：$4 = (apfs,）
             fstype=$(mount | awk -v dev="$fs" -v mnt="$mount" '$1==dev && $3==mnt {gsub(/^\(/,"",$4); gsub(/,$/,"",$4); print $4}')
@@ -532,11 +532,11 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         df -hT 2>/dev/null | grep -E '^/dev/' | while read -r fs type size used avail use mount; do
             use_num=$(echo "$use" | sed 's/%//')
             if [ "$use_num" -ge "$DISK_USAGE_CRITICAL_THRESHOLD" ]; then
-                status="🔴 危险"
+                status="$(ss::msg MSG_STATUS_DANGER)"
             elif [ "$use_num" -ge "$DISK_USAGE_WARNING_THRESHOLD" ]; then
-                status="🟡 警告"
+                status="$(ss::msg MSG_STATUS_WARNING)"
             else
-                status="🟢 健康"
+                status="$(ss::msg MSG_STATUS_HEALTHY)"
             fi
             printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" "$fs" "$type" "$size" "$used" "$avail" "$use" "$mount" "$status"
         done
@@ -546,13 +546,13 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 3. inode 使用情况（关键！小文件过多会导致 inode 耗尽）
     # ==============================================================================
-    ss::progress 3 10 "inode 使用情况"
-    echo "## 3. inode 使用情况"
+    ss::progress 3 10 "$(ss::msg MSG_DISK_SECTION_INODE)"
+    echo "## 3. $(ss::msg MSG_DISK_SECTION_INODE)"
     echo ""
-    echo "> **评估标准:** inode 使用率 < ${INODE_USAGE_WARNING_THRESHOLD}% 健康，${INODE_USAGE_WARNING_THRESHOLD}%~${INODE_USAGE_CRITICAL_THRESHOLD}% 警告，> ${INODE_USAGE_CRITICAL_THRESHOLD}% 危险"
-    echo "> **说明:** inode 是文件系统的元数据结构，即使磁盘空间未满，inode 耗尽也会导致无法创建新文件。"
+    echo "> **$(ss::msg MSG_DISK_EVAL_CRITERIA):** $(ss::msgf MSG_DISK_EVAL_INODE_USAGE "$INODE_USAGE_WARNING_THRESHOLD" "$INODE_USAGE_CRITICAL_THRESHOLD")"
+    echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_INODE_NOTE)"
     echo ""
-    echo "| 文件系统 | inode 总量 | 已用 | 可用 | 使用率 | 挂载点 | 状态 |"
+    echo "| $(ss::msg MSG_DISK_COL_FS) | $(ss::msg MSG_DISK_COL_INODE_TOTAL) | $(ss::msg MSG_DISK_COL_USED) | $(ss::msg MSG_DISK_COL_AVAILABLE) | $(ss::msg MSG_DISK_COL_USAGE) | $(ss::msg MSG_DISK_COL_MOUNTPOINT) | $(ss::msg MSG_TABLE_STATUS) |"
     echo "|----------|------------|------|------|--------|--------|------|"
     if [ "$OS_TYPE" = "Darwin" ]; then
         # macOS df -i 格式: Filesystem 512-blocks Used Available Capacity iused ifree %iused Mounted on
@@ -562,11 +562,11 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         df -i 2>/dev/null | grep -E '^/dev/' | while read -r fs blocks used avail capacity iused ifree ipct mount; do
             use_num=$(echo "$ipct" | sed 's/%//')
             if [ "$use_num" -ge "$INODE_USAGE_CRITICAL_THRESHOLD" ]; then
-                status="🔴 危险"
+                status="$(ss::msg MSG_STATUS_DANGER)"
             elif [ "$use_num" -ge "$INODE_USAGE_WARNING_THRESHOLD" ]; then
-                status="🟡 警告"
+                status="$(ss::msg MSG_STATUS_WARNING)"
             else
-                status="🟢 健康"
+                status="$(ss::msg MSG_STATUS_HEALTHY)"
             fi
             # 计算 inode 总量
             itotal=$((iused + ifree))
@@ -576,11 +576,11 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         df -i 2>/dev/null | grep -E '^/dev/' | while read -r fs itotal iused iavail iuse mount; do
             use_num=$(echo "$iuse" | sed 's/%//')
             if [ "$use_num" -ge "$INODE_USAGE_CRITICAL_THRESHOLD" ]; then
-                status="🔴 危险"
+                status="$(ss::msg MSG_STATUS_DANGER)"
             elif [ "$use_num" -ge "$INODE_USAGE_WARNING_THRESHOLD" ]; then
-                status="🟡 警告"
+                status="$(ss::msg MSG_STATUS_WARNING)"
             else
-                status="🟢 健康"
+                status="$(ss::msg MSG_STATUS_HEALTHY)"
             fi
             printf "| %s | %s | %s | %s | %s | %s | %s |\n" "$fs" "$itotal" "$iused" "$iavail" "$iuse" "$mount" "$status"
         done
@@ -590,20 +590,20 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 4. 磁盘 I/O 性能采样
     # ==============================================================================
-    ss::progress 4 10 "磁盘 I/O 性能采样"
-    echo "## 4. 磁盘 I/O 性能采样"
+    ss::progress 4 10 "$(ss::msg MSG_DISK_SECTION_IO)"
+    echo "## 4. $(ss::msg MSG_DISK_SECTION_IO)"
     echo ""
     # 检查 iostat 是否可用
     if ! command -v iostat &>/dev/null; then
-        echo "> ⚠️ **未安装 sysstat 包**，无法采集 I/O 数据。"
-        echo "> 安装命令: \`yum install -y sysstat\` 或 \`apt install -y sysstat\`"
+        echo "> ⚠️ **$(ss::msg MSG_DISK_IOSTAT_NOT_INSTALLED)**"
+        echo "> $(ss::msg MSG_DISK_INSTALL_CMD): \`yum install -y sysstat\` / \`apt install -y sysstat\`"
         echo ""
     elif [ "$OS_TYPE" = "Darwin" ]; then
         # macOS iostat 格式不同，输出 tps 和 MB/s 近似指标
-        echo "> **评估标准:** macOS iostat 仅提供 KB/t、tps、MB/s，无法直接获取 await/%util"
-        echo "> **说明:** tps > 1000 表示高 IOPS，MB/s 持续高位表示高吞吐"
+        echo "> **$(ss::msg MSG_DISK_EVAL_CRITERIA):** $(ss::msg MSG_DISK_EVAL_MACOS_IO)"
+        echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_EVAL_MACOS_IO_NOTE)"
         echo ""
-        echo "| 设备 | KB/t(平均) | tps(平均) | MB/s(平均) | 评估 |"
+        echo "| $(ss::msg MSG_DISK_COL_DEVICE) | KB/t($(ss::msg MSG_DISK_AVG)) | tps($(ss::msg MSG_DISK_AVG)) | MB/s($(ss::msg MSG_DISK_AVG)) | $(ss::msg MSG_TABLE_EVAL) |"
         echo "|------|------------|-----------|------------|------|"
         # iostat -d -w 1 -c 6: 1秒间隔采样6次；解析 macOS 多设备并列格式
         # 第一行为设备名，第二行为表头，后续每行按每设备3列分组
@@ -648,8 +648,8 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     '
         echo ""
     else
-        echo "> **评估标准:** await < ${IO_AWAIT_EXCELLENT_THRESHOLD}ms 优秀，${IO_AWAIT_EXCELLENT_THRESHOLD}~${IO_AWAIT_GOOD_THRESHOLD}ms 正常，${IO_AWAIT_GOOD_THRESHOLD}~${IO_AWAIT_SLOW_THRESHOLD}ms 缓慢，> ${IO_AWAIT_SLOW_THRESHOLD}ms 严重瓶颈"
-        echo "> **%util:** < ${IO_UTIL_HEALTHY_THRESHOLD}% 健康，${IO_UTIL_HEALTHY_THRESHOLD}%~${IO_UTIL_BUSY_THRESHOLD}% 繁忙，> ${IO_UTIL_BUSY_THRESHOLD}% 饱和"
+        echo "> **$(ss::msg MSG_DISK_EVAL_CRITERIA):** $(ss::msgf MSG_DISK_EVAL_AWAIT "$IO_AWAIT_EXCELLENT_THRESHOLD" "$IO_AWAIT_EXCELLENT_THRESHOLD" "$IO_AWAIT_GOOD_THRESHOLD" "$IO_AWAIT_GOOD_THRESHOLD" "$IO_AWAIT_SLOW_THRESHOLD" "$IO_AWAIT_SLOW_THRESHOLD")"
+        echo "> $(ss::msgf MSG_DISK_EVAL_UTIL "$IO_UTIL_HEALTHY_THRESHOLD" "$IO_UTIL_HEALTHY_THRESHOLD" "$IO_UTIL_BUSY_THRESHOLD" "$IO_UTIL_BUSY_THRESHOLD")"
         echo ""
         # iostat -x 1 6: 每秒采样一次，共采样 6 次（持续 6 秒），取最后平均值
         # 关键指标说明:
@@ -657,7 +657,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         #   rkB/s, wkB/s: 每秒读写吞吐量 (带宽)
         #   await: 平均 I/O 等待时间(ms)
         #   %util: 磁盘利用率，接近 100% 表示磁盘忙不过来
-        echo "| 设备 | r/s | w/s | rkB/s | wkB/s | await | %util | 评估 |"
+        echo "| $(ss::msg MSG_DISK_COL_DEVICE) | r/s | w/s | rkB/s | wkB/s | await | %util | $(ss::msg MSG_TABLE_EVAL) |"
         echo "|------|-----|-----|-------|-------|-------|-------|------|"
         iostat -x 1 6 2>/dev/null | tail -n +4 | awk -v await_excellent="$IO_AWAIT_EXCELLENT_THRESHOLD" -v await_good="$IO_AWAIT_GOOD_THRESHOLD" -v await_slow="$IO_AWAIT_SLOW_THRESHOLD" -v util_healthy="$IO_UTIL_HEALTHY_THRESHOLD" -v util_busy="$IO_UTIL_BUSY_THRESHOLD" '
         /^Device/ { next }
@@ -681,12 +681,12 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 5. 大文件与目录扫描（定位空间占用大户）
     # ==============================================================================
-    ss::progress 5 10 "空间占用大户扫描"
-    echo "## 5. 空间占用大户扫描"
+    ss::progress 5 10 "$(ss::msg MSG_DISK_SECTION_LARGE)"
+    echo "## 5. $(ss::msg MSG_DISK_SECTION_LARGE)"
     echo ""
     # 扫描各挂载点下占用空间最大的前 ${MOUNT_SCAN_TOP} 个目录
     # 注意: 会跳过 /proc /sys /dev /run 等虚拟文件系统，避免无意义扫描
-    echo "### 各挂载点 Top${MOUNT_SCAN_TOP} 大目录"
+    echo "### $(ss::msgf MSG_DISK_SUBSEC_MOUNT_DIRS "$MOUNT_SCAN_TOP")"
     echo ""
     if [ "$OS_TYPE" = "Darwin" ]; then
         MOUNT_COLUMN=9
@@ -701,9 +701,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         /proc | /sys | /dev | /run | /boot/efi) continue ;;
         esac
 
-        echo "#### 挂载点: \`$mount\`"
+        echo "#### $(ss::msg MSG_DISK_MOUNT_POINT): \`$mount\`"
         echo ""
-        echo "| 大小 | 目录 |"
+        echo "| $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_DIRECTORY) |"
         echo "|------|------|"
         # du -k 输出 KB 数值，sort -rn 兼容所有 POSIX sort，再由 hr_kb 转换显示
         # 2>/dev/null 忽略无权限目录的错误；ss::run_with_timeout 避免挂载点扫描耗时过长
@@ -714,16 +714,16 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
                 echo "| $(ss::hr_kb "$size_kb") | $path |"
             done
         else
-            echo "> ⚠️ 挂载点 \`$mount\` 目录扫描未返回结果（可能超时或权限不足）"
+            echo "> ⚠️ $(ss::msgf MSG_DISK_MOUNT_SCAN_FAIL "$mount")"
         fi
         echo ""
     done
 
     # 扫描大于 ${LARGE_FILE_SIZE_THRESHOLD} 的大文件，按大小降序
     # 使用 timeout 限制扫描时间，maxdepth 限制深度，避免根目录扫描耗时过长
-    echo "### 大于 ${LARGE_FILE_SIZE_THRESHOLD} 的文件 Top${LARGE_FILE_TOP}"
+    echo "### $(ss::msgf MSG_DISK_SUBSEC_LARGE_FILES_THRESHOLD "$LARGE_FILE_SIZE_THRESHOLD" "$LARGE_FILE_TOP")"
     echo ""
-    echo "| 大小 | 文件路径 |"
+    echo "| $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_FILE_PATH) |"
     echo "|------|----------|"
     # ss::run_with_timeout 已按系统自动选择 timeout/gtimeout/自实现，macOS 也能安全限时
     ss::run_with_timeout "$LARGE_FILE_SCAN_TIMEOUT" find / -maxdepth "$LARGE_FILE_SCAN_DEPTH" -type f -size +"$LARGE_FILE_SIZE_THRESHOLD" \
@@ -738,21 +738,21 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 6. 日志文件专项扫描（日志膨胀是磁盘满的元凶之一）
     # ==============================================================================
-    ss::progress 6 10 "日志文件专项扫描"
-    echo "## 6. 日志文件专项扫描"
+    ss::progress 6 10 "$(ss::msg MSG_DISK_SECTION_LOG)"
+    echo "## 6. $(ss::msg MSG_DISK_SECTION_LOG)"
     echo ""
-    echo "### 大于 ${LOG_FILE_SIZE_THRESHOLD} 的日志文件"
+    echo "### $(ss::msgf MSG_DISK_SUBSEC_LOG_LARGE "$LOG_FILE_SIZE_THRESHOLD")"
     echo ""
-    echo "| 大小 | 文件路径 |"
+    echo "| $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_FILE_PATH) |"
     echo "|------|----------|"
     find "$LOG_SCAN_DIR" -type f -size +"$LOG_FILE_SIZE_THRESHOLD" 2>/dev/null | while read file; do
         size=$(du -h "$file" 2>/dev/null | awk '{print $1}')
         echo "| $size | $file |"
     done
     echo ""
-    echo "### 日志目录总大小"
+    echo "### $(ss::msg MSG_DISK_SUBSEC_LOG_TOTAL)"
     echo ""
-    echo "| 路径 | 总大小 |"
+    echo "| $(ss::msg MSG_DISK_COL_PATH) | $(ss::msg MSG_DISK_TOTAL_SIZE) |"
     echo "|------|--------|"
     du -sh "$LOG_SCAN_DIR" 2>/dev/null | awk '{printf "| %s | %s |\n", $2, $1}'
     echo ""
@@ -760,51 +760,51 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 7. LVM 逻辑卷信息（如果使用 LVM）
     # ==============================================================================
-    ss::progress 7 10 "LVM 逻辑卷信息"
-    echo "## 7. LVM 逻辑卷信息"
+    ss::progress 7 10 "$(ss::msg MSG_DISK_SECTION_LVM)"
+    echo "## 7. $(ss::msg MSG_DISK_SECTION_LVM)"
     echo ""
     if command -v lvs &>/dev/null && command -v vgs &>/dev/null; then
-        echo "> 检测到 LVM 环境"
+        echo "> $(ss::msg MSG_DISK_LVM_DETECTED)"
         echo ""
 
-        echo "### 物理卷 (PV)"
+        echo "### $(ss::msg MSG_DISK_LVM_PV)"
         echo ""
-        echo "| 设备 | 卷组 | 容量 | 已用 |"
+        echo "| $(ss::msg MSG_DISK_COL_DEVICE) | $(ss::msg MSG_DISK_COL_VOLUME_GROUP) | $(ss::msg MSG_DISK_COL_CAPACITY) | $(ss::msg MSG_DISK_COL_USED) |"
         echo "|------|------|------|------|"
         pvs 2>/dev/null | grep -v "PV" | awk '{printf "| %s | %s | %s | %s |\n", $1, $2, $5, $6}'
         echo ""
 
-        echo "### 卷组 (VG)"
+        echo "### $(ss::msg MSG_DISK_LVM_VG)"
         echo ""
-        echo "| 卷组 | 容量 | 可用 |"
+        echo "| $(ss::msg MSG_DISK_COL_VOLUME_GROUP) | $(ss::msg MSG_DISK_COL_CAPACITY) | $(ss::msg MSG_DISK_COL_AVAILABLE) |"
         echo "|------|------|------|"
         vgs 2>/dev/null | grep -v "VG" | awk '{printf "| %s | %s | %s |\n", $1, $6, $7}'
         echo ""
 
-        echo "### 逻辑卷 (LV)"
+        echo "### $(ss::msg MSG_DISK_LVM_LV)"
         echo ""
-        echo "| 逻辑卷 | 卷组 | 容量 |"
+        echo "| $(ss::msg MSG_DISK_COL_LOGICAL_VOLUME) | $(ss::msg MSG_DISK_COL_VOLUME_GROUP) | $(ss::msg MSG_DISK_COL_CAPACITY) |"
         echo "|--------|------|------|"
         lvs 2>/dev/null | grep -v "LV" | awk '{printf "| %s | %s | %s |\n", $1, $2, $4}'
         echo ""
     else
-        echo "> ℹ️ 未使用 LVM 或 lvm2 工具未安装"
+        echo "> ℹ️ $(ss::msg MSG_DISK_LVM_NOT_USED)"
         echo ""
     fi
 
     # ==============================================================================
     # 8. 磁盘健康状态 (SMART)
     # ==============================================================================
-    ss::progress 8 10 "磁盘健康状态 (SMART)"
-    echo "## 8. 磁盘健康状态 (SMART)"
+    ss::progress 8 10 "$(ss::msg MSG_DISK_SECTION_SMART)"
+    echo "## 8. $(ss::msg MSG_DISK_SECTION_SMART)"
     echo ""
     if ! command -v smartctl &>/dev/null; then
         if [ "$OS_TYPE" = "Darwin" ]; then
-            echo "> ⚠️ **未安装 smartmontools**，无法读取 SMART 数据。"
-            echo "> macOS 安装命令: \`brew install smartmontools\`"
+            echo "> ⚠️ **$(ss::msg MSG_DISK_SMART_NOT_INSTALLED)**"
+            echo "> $(ss::msg MSG_DISK_SMART_INSTALL_MACOS): \`brew install smartmontools\`"
         else
-            echo "> ⚠️ **未安装 smartmontools**，无法读取 SMART 数据。"
-            echo "> 安装命令: \`yum install -y smartmontools\` 或 \`apt install -y smartmontools\`"
+            echo "> ⚠️ **$(ss::msg MSG_DISK_SMART_NOT_INSTALLED)**"
+            echo "> $(ss::msg MSG_DISK_SMART_INSTALL_LINUX): \`yum install -y smartmontools\` / \`apt install -y smartmontools\`"
         fi
         echo ""
     else
@@ -822,16 +822,16 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
             # -H 只输出健康状态，简洁
             health=$(smartctl -H $disk 2>/dev/null | grep "SMART overall-health" | awk -F': ' '{print $2}')
             if [ -n "$health" ]; then
-                echo "- **SMART 健康状态:** $health"
+                echo "- **$(ss::msg MSG_DISK_SMART_HEALTH):** $health"
             else
-                echo "- **SMART 健康状态:** 无法读取 (可能是虚拟磁盘/RAID/容器环境/权限不足)"
+                echo "- **$(ss::msg MSG_DISK_SMART_HEALTH):** $(ss::msg MSG_DISK_SMART_UNREADABLE)"
             fi
 
             # 读取关键 SMART 属性（温度、重映射扇区、通电时间等）
             # 使用 -A 获取属性表，过滤关键行；使用 $NF 获取最后一列（Raw_Value），
             # 避免不同厂商输出列数不一致导致取值错误
             echo ""
-            echo "| 属性 | 原始值 |"
+            echo "| $(ss::msg MSG_DISK_SMART_ATTR) | $(ss::msg MSG_DISK_SMART_RAW_VALUE) |"
             echo "|------|--------|"
             smartctl -A $disk 2>/dev/null | grep -E "Reallocated_Sector_Ct|Current_Pending_Sector|Offline_Uncorrectable|Temperature|Power_On_Hours|Wear_Leveling_Count|Media_Wearout_Indicator|Total_LBAs_Written" | while read -r line; do
                 attr_name=$(echo "$line" | awk '{print $2}')
@@ -845,10 +845,10 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 9. 挂载参数与文件系统特性
     # ==============================================================================
-    ss::progress 9 10 "挂载参数与文件系统特性"
-    echo "## 9. 挂载参数与文件系统特性"
+    ss::progress 9 10 "$(ss::msg MSG_DISK_SECTION_MOUNT)"
+    echo "## 9. $(ss::msg MSG_DISK_SECTION_MOUNT)"
     echo ""
-    echo "| 设备 | 挂载点 | 类型 | 参数 |"
+    echo "| $(ss::msg MSG_DISK_COL_DEVICE) | $(ss::msg MSG_DISK_COL_MOUNTPOINT) | $(ss::msg MSG_DISK_COL_TYPE) | $(ss::msg MSG_DISK_COL_MOUNT_OPTIONS) |"
     echo "|------|--------|------|------|"
     mount 2>/dev/null | grep -E '^/dev/' | awk '
     {
@@ -885,19 +885,19 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     # ==============================================================================
     # 10. Docker 空间占用专项扫描
     # ==============================================================================
-    ss::progress 10 10 "Docker 空间占用专项扫描"
-    echo "## 10. Docker 空间占用专项扫描"
+    ss::progress 10 10 "$(ss::msg MSG_DISK_SECTION_DOCKER)"
+    echo "## 10. $(ss::msg MSG_DISK_SECTION_DOCKER)"
     echo ""
     if ! command -v docker &>/dev/null; then
-        echo "> ℹ️ 未安装 Docker，跳过本节。"
+        echo "> ℹ️ $(ss::msg MSG_DISK_DOCKER_NOT_INSTALLED)"
         echo ""
     else
         # --- 10.1 Docker 总体空间概览 ---
-        echo "### 10.1 Docker 总体空间概览"
+        echo "### 10.1 $(ss::msg MSG_DISK_DOCKER_OVERVIEW)"
         echo ""
-        echo "> **说明:** 展示 Docker 镜像、容器、卷、构建缓存的总占用及可回收空间"
+        echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_DOCKER_OVERVIEW_DESC)"
         echo ""
-        echo "| 类型 | 总量 | 活跃 | 大小 | 可回收 |"
+        echo "| $(ss::msg MSG_DISK_COL_TYPE) | $(ss::msg MSG_DISK_COL_TOTAL) | $(ss::msg MSG_DISK_COL_ACTIVE) | $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_RECLAIMABLE) |"
         echo "|------|------|------|------|--------|"
         docker system df --format "table {{.Type}}\t{{.TotalCount}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}" 2>/dev/null | tail -n +2 | while IFS=$'\t' read -r type total active size reclaimable; do
             printf "| %s | %s | %s | %s | %s |\n" "$type" "$total" "$active" "$size" "$reclaimable"
@@ -905,18 +905,18 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         echo ""
 
         # --- 10.2 Docker 数据目录总大小 ---
-        echo "### 10.2 Docker 数据目录总大小"
+        echo "### 10.2 $(ss::msg MSG_DISK_DOCKER_DATA_DIR)"
         echo ""
 
         # 优先级：配置文件 > docker info > 默认路径
         if [ -n "$DOCKER_DATA_DIR" ] && [ -d "$DOCKER_DATA_DIR" ]; then
             # 使用配置文件中的自定义目录
-            echo "> **使用配置文件指定的 Docker 数据目录:** \`$DOCKER_DATA_DIR\`"
+            echo "> **$(ss::msg MSG_DISK_DOCKER_DATA_DIR_CONFIG):** \`$DOCKER_DATA_DIR\`"
             echo ""
             docker_total=$(du -sh "$DOCKER_DATA_DIR" 2>/dev/null | awk '{print $1}')
-            echo "> **Docker 数据目录 \`$DOCKER_DATA_DIR\` 总大小:** ${docker_total:-未知}"
+            echo "> **$(ss::msgf MSG_DISK_DOCKER_DATA_DIR_TOTAL "$DOCKER_DATA_DIR"):** ${docker_total:-$(ss::msg MSG_DISK_UNKNOWN)}"
             echo ""
-            echo "| 子目录 | 大小 |"
+            echo "| $(ss::msg MSG_DISK_COL_SUBDIR_NAME) | $(ss::msg MSG_DISK_COL_SIZE) |"
             echo "|--------|------|"
             for sub in "$DOCKER_DATA_DIR"/*/; do
                 [ -d "$sub" ] || continue
@@ -930,9 +930,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
             # 使用默认目录
             DOCKER_DATA_DIR="/var/lib/docker"
             docker_total=$(du -sh "$DOCKER_DATA_DIR" 2>/dev/null | awk '{print $1}')
-            echo "> **Docker 数据目录 \`$DOCKER_DATA_DIR\` 总大小:** ${docker_total:-未知}"
+            echo "> **$(ss::msgf MSG_DISK_DOCKER_DATA_DIR_TOTAL "$DOCKER_DATA_DIR"):** ${docker_total:-$(ss::msg MSG_DISK_UNKNOWN)}"
             echo ""
-            echo "| 子目录 | 大小 |"
+            echo "| $(ss::msg MSG_DISK_COL_SUBDIR_NAME) | $(ss::msg MSG_DISK_COL_SIZE) |"
             echo "|--------|------|"
             for sub in "$DOCKER_DATA_DIR"/*/; do
                 [ -d "$sub" ] || continue
@@ -948,9 +948,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
             if [ -n "$DOCKER_ROOT" ] && [ -d "$DOCKER_ROOT" ]; then
                 DOCKER_DATA_DIR="$DOCKER_ROOT"
                 docker_total=$(du -sh "$DOCKER_ROOT" 2>/dev/null | awk '{print $1}')
-                echo "> **Docker 数据目录 \`$DOCKER_ROOT\` 总大小:** ${docker_total:-未知}"
+                echo "> **$(ss::msgf MSG_DISK_DOCKER_DATA_DIR_TOTAL "$DOCKER_ROOT"):** ${docker_total:-$(ss::msg MSG_DISK_UNKNOWN)}"
                 echo ""
-                echo "| 子目录 | 大小 |"
+                echo "| $(ss::msg MSG_DISK_COL_SUBDIR_NAME) | $(ss::msg MSG_DISK_COL_SIZE) |"
                 echo "|--------|------|"
                 for sub in "$DOCKER_ROOT"/*/; do
                     [ -d "$sub" ] || continue
@@ -961,18 +961,18 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
                     printf "| %s | %s |\n" "$dir_name" "$(ss::hr_kb "$size_kb")"
                 done
             else
-                echo "> ⚠️ 无法定位 Docker 数据目录（权限不足或非标准路径）"
-                echo "> **提示:** 可通过配置文件指定自定义 Docker 数据目录"
+                echo "> ⚠️ $(ss::msg MSG_DISK_DOCKER_CANNOT_LOCATE)"
+                echo "> **$(ss::msg MSG_DISK_DOCKER_CONFIG_HINT)**"
             fi
         fi
         echo ""
 
         # --- 10.3 镜像详情（按大小降序 Top${DOCKER_IMAGE_TOP}）---
-        echo "### 10.3 镜像占用 Top${DOCKER_IMAGE_TOP}"
+        echo "### 10.3 $(ss::msgf MSG_DISK_DOCKER_IMAGES "$DOCKER_IMAGE_TOP")"
         echo ""
-        echo "> **说明:** 展示占用空间最大的镜像，\`<none>\` 为悬空镜像，可安全清理"
+        echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_DOCKER_IMAGES_DESC)"
         echo ""
-        echo "| 镜像仓库:标签 | 镜像 ID | 大小 | 创建时间 |"
+        echo "| $(ss::msg MSG_DISK_COL_REPO_TAG) | $(ss::msg MSG_DISK_COL_IMAGE_ID) | $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_CREATED) |"
         echo "|---------------|---------|------|----------|"
         docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedSince}}" 2>/dev/null | tail -n +2 | head -"$DOCKER_IMAGE_TOP" | while IFS=$'\t' read -r repo id size created; do
             # 清理空白标签
@@ -984,16 +984,16 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         # 悬空镜像数量与大小
         dangling_count=$(docker images -f "dangling=true" -q 2>/dev/null | wc -l | tr -d ' ')
         if [ "$dangling_count" -gt 0 ]; then
-            echo "> ⚠️ **发现 ${dangling_count} 个悬空镜像（dangling images）**，可通过 \`docker image prune\` 清理"
+            echo "> ⚠️ $(ss::msgf MSG_DISK_DOCKER_DANGLING "$dangling_count")"
             echo ""
         fi
 
         # --- 10.4 容器空间占用 Top${DOCKER_CONTAINER_TOP} ---
-        echo "### 10.4 容器空间占用 Top${DOCKER_CONTAINER_TOP}"
+        echo "### 10.4 $(ss::msgf MSG_DISK_DOCKER_CONTAINERS "$DOCKER_CONTAINER_TOP")"
         echo ""
-        echo "> **说明:** 展示可写层占用空间最大的容器，\$(SIZE) 列含虚拟大小和实际写入大小"
+        echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_DOCKER_CONTAINERS_DESC)"
         echo ""
-        echo "| 容器名 | 镜像 | 状态 | 可写层大小 |"
+        echo "| $(ss::msg MSG_DISK_COL_CONTAINER_NAME) | $(ss::msg MSG_DISK_COL_IMAGE) | $(ss::msg MSG_DISK_COL_STATUS) | $(ss::msg MSG_DISK_COL_WRITABLE_SIZE) |"
         echo "|--------|------|------|------------|"
         docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Size}}" 2>/dev/null | tail -n +2 | head -"$DOCKER_CONTAINER_TOP" | while IFS=$'\t' read -r name image status size; do
             printf "| %s | %s | %s | %s |\n" "$name" "$image" "$status" "$size"
@@ -1001,11 +1001,11 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         echo ""
 
         # --- 10.5 Volume 卷占用 Top${DOCKER_VOLUME_TOP} ---
-        echo "### 10.5 Volume 卷占用 Top${DOCKER_VOLUME_TOP}"
+        echo "### 10.5 $(ss::msgf MSG_DISK_DOCKER_VOLUMES "$DOCKER_VOLUME_TOP")"
         echo ""
-        echo "> **说明:** 大体积卷通常是数据库、日志持久化等场景，注意区分活跃卷与孤立卷"
+        echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_DOCKER_VOLUMES_DESC)"
         echo ""
-        echo "| 卷名称 | 驱动 | 挂载点 |"
+        echo "| $(ss::msg MSG_DISK_COL_VOLUME_NAME) | $(ss::msg MSG_DISK_COL_DRIVER) | $(ss::msg MSG_DISK_COL_MOUNTPOINT) |"
         echo "|--------|------|--------|"
         docker volume ls --format "table {{.Name}}\t{{.Driver}}\t{{.Mountpoint}}" 2>/dev/null | tail -n +2 | head -"$DOCKER_VOLUME_TOP" | while IFS=$'\t' read -r name driver mountpoint; do
             printf "| %s | %s | %s |\n" "$name" "$driver" "$mountpoint"
@@ -1013,9 +1013,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         echo ""
 
         # 统计各卷实际大小（需遍历挂载点）
-        echo "#### 卷实际磁盘占用"
+        echo "#### $(ss::msg MSG_DISK_DOCKER_VOLUME_ACTUAL)"
         echo ""
-        echo "| 大小 | 卷名称 |"
+        echo "| $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_VOLUME_NAME) |"
         echo "|------|--------|"
         docker volume ls -q 2>/dev/null | while read -r vol; do
             mountpoint=$(docker volume inspect --format '{{.Mountpoint}}' "$vol" 2>/dev/null)
@@ -1037,23 +1037,23 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
             fi
         done
         if [ "$orphan_vols" -gt 0 ]; then
-            echo "> ⚠️ **发现 ${orphan_vols} 个孤立卷（未被任何容器引用）**，可通过 \`docker volume prune\` 清理"
+            echo "> ⚠️ $(ss::msgf MSG_DISK_DOCKER_ORPHAN "$orphan_vols")"
             echo ""
         fi
 
         # --- 10.6 构建缓存 ---
-        echo "### 10.6 构建缓存"
+        echo "### 10.6 $(ss::msg MSG_DISK_DOCKER_BUILD_CACHE)"
         echo ""
-        echo "> **说明:** Docker BuildKit 构建缓存可能占用大量空间，可通过 \`docker builder prune\` 清理"
+        echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_DOCKER_BUILD_CACHE_DESC)"
         echo ""
         if docker buildx du 2>/dev/null | head -1 | grep -q .; then
-            echo "| 类型 | 大小 | 是否活跃 |"
+            echo "| $(ss::msg MSG_DISK_COL_TYPE) | $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_IS_ACTIVE) |"
             echo "|------|------|----------|"
             docker buildx du 2>/dev/null | awk 'NR>1 && NF>=3 {printf "| %s | %s | %s |\n", $1, $2, $3}' | head -"$DOCKER_BUILD_CACHE_TOP"
             echo ""
             # 构建缓存总量
             build_total=$(docker buildx du 2>/dev/null | tail -1)
-            echo "> **构建缓存总计:** $build_total"
+            echo "> **$(ss::msg MSG_DISK_DOCKER_BUILD_TOTAL):** $build_total"
         else
             # 回退到 docker system df 中的 Build Cache 行
             build_info=$(docker system df 2>/dev/null | grep "Build Cache")
@@ -1062,15 +1062,15 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
                 echo "$build_info"
                 echo "\`\`\`"
             else
-                echo "> ℹ️ 无构建缓存数据（可能未使用 BuildKit 或无缓存）"
+                echo "> ℹ️ $(ss::msg MSG_DISK_DOCKER_NO_CACHE)"
             fi
         fi
         echo ""
 
         # --- 10.7 Docker 日志文件扫描 ---
-        echo "### 10.7 Docker 日志文件扫描"
+        echo "### 10.7 $(ss::msg MSG_DISK_DOCKER_LOG_SCAN)"
         echo ""
-        echo "> **说明:** 容器日志（json-file 驱动）不做轮转时会无限膨胀，是磁盘满的常见原因"
+        echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_DOCKER_LOG_DESC)"
         echo ""
 
         # 扫描 Docker 日志目录下的大文件
@@ -1082,9 +1082,9 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         fi
 
         if [ -n "$DOCKER_LOG_DIR" ]; then
-            echo "#### 大于 ${DOCKER_LOG_SIZE_THRESHOLD} 的容器日志文件"
+            echo "#### $(ss::msgf MSG_DISK_DOCKER_LOG_LARGE "$DOCKER_LOG_SIZE_THRESHOLD")"
             echo ""
-            echo "| 大小 | 文件路径 |"
+            echo "| $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_FILE_PATH) |"
             echo "|------|----------|"
             find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -size +"$DOCKER_LOG_SIZE_THRESHOLD" 2>/dev/null | while read -r logfile; do
                 size=$(du -h "$logfile" 2>/dev/null | awk '{print $1}')
@@ -1095,18 +1095,18 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
             # 日志总大小
             log_total=$(find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -exec du -ck {} + 2>/dev/null | tail -1 | awk '{print $1}')
             if [ -n "$log_total" ] && [ "$log_total" -gt 0 ]; then
-                echo "> **容器日志文件总大小:** $(ss::hr_kb "$log_total")"
+                echo "> **$(ss::msg MSG_DISK_DOCKER_LOG_TOTAL):** $(ss::hr_kb "$log_total")"
                 echo ""
             fi
         else
-            echo "> ⚠️ 无法定位 Docker 容器日志目录（权限不足或非标准路径）"
+            echo "> ⚠️ $(ss::msg MSG_DISK_DOCKER_LOG_CANNOT_LOCATE)"
             echo ""
         fi
 
         # 列出当前运行容器的日志大小 Top${DOCKER_CONTAINER_LOG_TOP}
-        echo "#### 运行中容器日志大小 Top${DOCKER_CONTAINER_LOG_TOP}"
+        echo "#### $(ss::msgf MSG_DISK_DOCKER_LOG_RUNNING "$DOCKER_CONTAINER_LOG_TOP")"
         echo ""
-        echo "| 日志大小 | 容器名 | 容器 ID |"
+        echo "| $(ss::msg MSG_DISK_COL_LOG_SIZE) | $(ss::msg MSG_DISK_COL_CONTAINER_NAME) | $(ss::msg MSG_DISK_COL_CONTAINER_ID) |"
         echo "|----------|--------|---------|"
         docker ps --format "{{.Names}}\t{{.ID}}" 2>/dev/null | while IFS=$'\t' read -r cname cid; do
             log_size=$(docker inspect --format='{{.LogPath}}' "$cid" 2>/dev/null)
@@ -1120,20 +1120,20 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         echo ""
 
         # --- 10.8 清理建议汇总（仅建议，不执行）---
-        echo "### 10.8 清理建议（仅供参考）"
+        echo "### 10.8 $(ss::msg MSG_DISK_DOCKER_CLEANUP)"
         echo ""
-        echo "> ⚠️ **安全提示:** 以下命令仅为建议，本脚本**不会自动执行任何删除/清理操作**。"
-        echo "> 请运维人员根据实际情况评估后手动执行，执行前务必确认目标环境。"
+        echo "> ⚠️ **$(ss::msg MSG_DISK_DOCKER_CLEANUP_WARN)**"
+        echo "> $(ss::msg MSG_DISK_DOCKER_CLEANUP_HINT)"
         echo ""
-        echo "| 操作 | 命令 | 风险等级 | 说明 |"
+        echo "| $(ss::msg MSG_DISK_COL_OPERATION) | $(ss::msg MSG_DISK_COL_COMMAND) | $(ss::msg MSG_DISK_COL_RISK) | $(ss::msg MSG_TABLE_DESC) |"
         echo "|------|------|----------|------|"
-        echo "| 清理悬空镜像 | \`docker image prune\` | 🟢 低 | 删除所有 \<none\> 标签的悬空镜像 |"
-        echo "| 清理未用镜像 | \`docker image prune -a\` | 🟡 中 | 删除所有未被容器引用的镜像（**谨慎**） |"
-        echo "| 清理停止的容器 | \`docker container prune\` | 🟢 低 | 删除所有已停止的容器 |"
-        echo "| 清理孤立卷 | \`docker volume prune\` | 🟡 中 | 删除未被任何容器挂载的卷（**谨慎，可能丢数据**） |"
-        echo "| 清理构建缓存 | \`docker builder prune\` | 🟢 低 | 删除 BuildKit 构建缓存 |"
-        echo "| 一键清理全部 | \`docker system prune -a --volumes\` | 🔴 高 | 清理所有未使用资源（**高危，务必确认后执行**） |"
-        echo "| 截断大日志文件 | \`truncate -s 0 /path/to/log\` | 🟢 低 | 清空指定容器日志而不删除文件 |"
+        echo "| $(ss::msg MSG_DISK_DOCKER_CLEAN_DANGLING) | \`docker image prune\` | 🟢 $(ss::msg MSG_DISK_RISK_LOW) | $(ss::msg MSG_DISK_DOCKER_CLEAN_DANGLING_DESC) |"
+        echo "| $(ss::msg MSG_DISK_DOCKER_CLEAN_UNUSED) | \`docker image prune -a\` | 🟡 $(ss::msg MSG_DISK_RISK_MED) | $(ss::msg MSG_DISK_DOCKER_CLEAN_UNUSED_DESC) |"
+        echo "| $(ss::msg MSG_DISK_DOCKER_CLEAN_STOPPED) | \`docker container prune\` | 🟢 $(ss::msg MSG_DISK_RISK_LOW) | $(ss::msg MSG_DISK_DOCKER_CLEAN_STOPPED_DESC) |"
+        echo "| $(ss::msg MSG_DISK_DOCKER_CLEAN_ORPHAN) | \`docker volume prune\` | 🟡 $(ss::msg MSG_DISK_RISK_MED) | $(ss::msg MSG_DISK_DOCKER_CLEAN_ORPHAN_DESC) |"
+        echo "| $(ss::msg MSG_DISK_DOCKER_CLEAN_BUILD) | \`docker builder prune\` | 🟢 $(ss::msg MSG_DISK_RISK_LOW) | $(ss::msg MSG_DISK_DOCKER_CLEAN_BUILD_DESC) |"
+        echo "| $(ss::msg MSG_DISK_DOCKER_CLEAN_ALL) | \`docker system prune -a --volumes\` | 🔴 $(ss::msg MSG_DISK_RISK_HIGH) | $(ss::msg MSG_DISK_DOCKER_CLEAN_ALL_DESC) |"
+        echo "| $(ss::msg MSG_DISK_DOCKER_CLEAN_LOG) | \`truncate -s 0 /path/to/log\` | 🟢 $(ss::msg MSG_DISK_RISK_LOW) | $(ss::msg MSG_DISK_DOCKER_CLEAN_LOG_DESC) |"
         echo ""
     fi # 结束 if ! command -v docker &> /dev/null 判断
 fi     # 结束 if [ "$SKIP_TO_FOOTER" != "true" ] 判断（全盘扫描模式）
@@ -1145,15 +1145,15 @@ fi     # 结束 if [ "$SKIP_TO_FOOTER" != "true" ] 判断（全盘扫描模式�
 # Linux: 读取两次 /proc/diskstats，间隔 2 秒，计算瞬时速率
 # macOS: 无 /proc/diskstats，暂不支持
 if [ "$SKIP_TO_FOOTER" != "true" ] && [ "$ENABLE_REALTIME_IO" = "true" ]; then
-    echo "## 11. 实时 I/O 负载快照"
+    echo "## 11. $(ss::msg MSG_DISK_SECTION_REALTIME_IO)"
     echo ""
     if [ "$OS_TYPE" = "Darwin" ]; then
-        echo "> ℹ️ macOS 暂无 /proc/diskstats 等价物，实时 I/O 快照暂不支持。"
-        echo "> 建议直接使用 \`iostat -d -w 1\` 观察瞬时速率。"
+        echo "> ℹ️ $(ss::msg MSG_DISK_REALTIME_IO_MACOS)"
+        echo "> $(ss::msg MSG_DISK_REALTIME_IO_HINT)"
     else
-        echo "> **说明:** 本节通过 ${REALTIME_IO_INTERVAL} 秒间隔采样 /proc/diskstats 计算瞬时速率"
+        echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msgf MSG_DISK_REALTIME_IO_DESC "$REALTIME_IO_INTERVAL")"
         echo ""
-        echo "| 设备 | 读扇区/秒 | 写扇区/秒 |"
+        echo "| $(ss::msg MSG_DISK_COL_DEVICE) | $(ss::msg MSG_DISK_COL_READ_SECTORS) | $(ss::msg MSG_DISK_COL_WRITE_SECTORS) |"
         echo "|------|-----------|-----------|"
 
         # 第一次采样
@@ -1195,37 +1195,37 @@ fi
 if [ "$DIR_SCAN_MODE" = "true" ]; then
     echo "---"
     echo ""
-    echo "## 附录：分析建议"
+    echo "## $(ss::msg MSG_DISK_APPENDIX)"
     echo ""
-    echo "将此报告粘贴给大模型时，可附加以下提示词："
+    echo "$(ss::msg MSG_DISK_APPENDIX_HINT)"
     echo ""
     echo '```'
-    echo "请分析以下指定目录空间占用报告，重点关注："
-    echo "1. 哪些子目录或文件占用空间最大"
-    echo "2. 文件类型分布是否合理，是否有大量临时文件或日志文件"
-    echo "3. 目录层级结构是否合理，是否有异常深层目录"
-    echo "4. 给出具体的清理建议或优化方案"
+    echo "$(ss::msg MSG_DISK_APPENDIX_DIR_PROMPT)"
+    echo "1. $(ss::msg MSG_DISK_APPENDIX_DIR_P1)"
+    echo "2. $(ss::msg MSG_DISK_APPENDIX_DIR_P2)"
+    echo "3. $(ss::msg MSG_DISK_APPENDIX_DIR_P3)"
+    echo "4. $(ss::msg MSG_DISK_APPENDIX_DIR_P4)"
     echo '```'
     echo ""
-    echo "> 📄 **报告已保存至:** \`$REPORT_PATH\`"
+    echo "> 📄 **$(ss::msg MSG_COMMON_REPORT_SAVED):** \`$REPORT_PATH\`"
 else
     echo "---"
     echo ""
-    echo "## 附录：分析建议"
+    echo "## $(ss::msg MSG_DISK_APPENDIX)"
     echo ""
-    echo "将此报告粘贴给大模型时，可附加以下提示词："
+    echo "$(ss::msg MSG_DISK_APPENDIX_HINT)"
     echo ""
     echo '```'
-    echo "请分析以下磁盘报告，重点关注："
-    echo "1. 是否有挂载点使用率超过 ${REPORT_DISK_USAGE_WARNING}% 或 inode 使用率超过 ${REPORT_INODE_USAGE_WARNING}%"
-    echo "2. I/O await 是否超过 ${REPORT_IO_AWAIT_WARNING}ms，%util 是否接近 ${REPORT_IO_UTIL_WARNING}%"
-    echo "3. 哪些目录或文件是空间占用大户，是否可以清理"
-    echo "4. SMART 状态是否正常，是否有坏扇区预警"
-    echo "5. Docker 空间占用是否合理，是否有大量悬空镜像、孤立卷或膨胀日志"
-    echo "6. 给出具体的清理命令或扩容建议"
+    echo "$(ss::msg MSG_DISK_APPENDIX_DISK_PROMPT)"
+    echo "1. $(ss::msgf MSG_DISK_APPENDIX_DISK_P1 "$REPORT_DISK_USAGE_WARNING" "$REPORT_INODE_USAGE_WARNING")"
+    echo "2. $(ss::msgf MSG_DISK_APPENDIX_DISK_P2 "$REPORT_IO_AWAIT_WARNING" "$REPORT_IO_UTIL_WARNING")"
+    echo "3. $(ss::msg MSG_DISK_APPENDIX_DISK_P3)"
+    echo "4. $(ss::msg MSG_DISK_APPENDIX_DISK_P4)"
+    echo "5. $(ss::msg MSG_DISK_APPENDIX_DISK_P5)"
+    echo "6. $(ss::msg MSG_DISK_APPENDIX_DISK_P6)"
     echo '```'
     echo ""
-    echo "> 📄 **报告已保存至:** \`$REPORT_PATH\`"
+    echo "> 📄 **$(ss::msg MSG_COMMON_REPORT_SAVED):** \`$REPORT_PATH\`"
 fi
 
 # ==============================================================================

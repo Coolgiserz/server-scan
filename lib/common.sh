@@ -7,6 +7,39 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
+# 国际化 (i18n) 支持
+# ------------------------------------------------------------------------------
+# 语言检测：SS_LANG > LANG > zh_CN
+SS_LANG="${SS_LANG:-${LANG:-zh_CN}}"
+SS_LANG="${SS_LANG%%.*}"   # 移除 .UTF-8 等后缀: en_US.UTF-8 -> en_US
+SS_LANG="${SS_LANG//-/_}"  # 连字符转下划线: zh-CN -> zh_CN
+
+# 加载语言文件
+_ss_lang_file="$SCRIPT_DIR/lib/i18n/${SS_LANG}.sh"
+if [ -f "$_ss_lang_file" ]; then
+    source "$_ss_lang_file"
+else
+    # 回退到中文
+    source "$SCRIPT_DIR/lib/i18n/zh_CN.sh" 2>/dev/null || true
+fi
+
+# 消息查找函数
+ss::msg() {
+    local key="$1"
+    local fallback="${2:-$key}"
+    echo "${!key:-$fallback}"
+}
+
+# 带格式化的消息查找
+ss::msgf() {
+    local key="$1"
+    shift
+    local template
+    template=$(ss::msg "$key" "$key")
+    printf "$template" "$@"
+}
+
+# ------------------------------------------------------------------------------
 # 操作系统检测
 # ------------------------------------------------------------------------------
 ss::detect_os() {
@@ -109,7 +142,11 @@ ss::report_begin() {
 
     # 启动横幅（实时打印到终端，不进报告文件）
     if [ "$QUIET" != "true" ]; then
-        printf '\n\033[1;32m🚀 %s\033[0m (共 %s 个章节，执行期间会逐章显示进度)\n' "$title" "$total_sections" >&3
+        printf '\n\033[1;32m🚀 %s\033[0m (%s %s %s)\n' \
+            "$title" \
+            "$(ss::msg MSG_COMMON_TOTAL)" \
+            "$total_sections" \
+            "$(ss::msg MSG_COMMON_SECTIONS)" >&3
     fi
 }
 
@@ -128,7 +165,10 @@ ss::report_end() {
 
     # 完成提示（实时打印到终端）
     if [ "$QUIET" != "true" ]; then
-        printf '\033[1;32m✅ 分析完成\033[0m 报告已保存至: %s\n' "$report_path" >&3
+        printf '\033[1;32m✅ %s\033[0m %s: %s\n' \
+            "$(ss::msg MSG_COMMON_ANALYSIS_COMPLETE)" \
+            "$(ss::msg MSG_COMMON_REPORT_SAVED)" \
+            "$report_path" >&3
     fi
 
     # 关闭 fd3
