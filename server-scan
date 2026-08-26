@@ -31,6 +31,7 @@ $(ss::msg MSG_HELP_USAGE):
   cpu-mem         $(ss::msg MSG_SCAN_SUBCMD_CPUMEM)
   disk            $(ss::msg MSG_SCAN_SUBCMD_DISK)
   network         $(ss::msg MSG_SCAN_SUBCMD_NETWORK)
+  security        $(ss::msg MSG_SCAN_SUBCMD_SECURITY)
   all             $(ss::msg MSG_SCAN_SUBCMD_ALL)
 
 $(ss::msg MSG_HELP_COMMON_OPTIONS):
@@ -61,6 +62,9 @@ $(ss::msg MSG_HELP_EXAMPLES):
 
   # $(ss::msg MSG_SCAN_EXAMPLE_ALL)
   server-scan all
+
+  # $(ss::msg MSG_SCAN_EXAMPLE_SECURITY)
+  server-scan security
 
 EOF
     exit 0
@@ -127,6 +131,10 @@ network)
     check_script "network_analyzer.sh"
     exec "$SCRIPT_DIR/network_analyzer.sh" "$@"
     ;;
+security)
+    check_script "security_scanner.sh"
+    exec "$SCRIPT_DIR/security_scanner.sh" "$@"
+    ;;
 all)
     echo "$(ss::msg MSG_SCAN_ALL_START)"
     echo ""
@@ -175,6 +183,16 @@ all)
         "$SCRIPT_DIR/network_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
     else
         "$SCRIPT_DIR/network_analyzer.sh" || true
+    fi
+    echo ""
+
+    echo "=========================================="
+    echo "$(ss::msg MSG_SCAN_STEP_5)"
+    echo "=========================================="
+    if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
+        "$SCRIPT_DIR/security_scanner.sh" "${SCRIPT_ARGS[@]}" || true
+    else
+        "$SCRIPT_DIR/security_scanner.sh" || true
     fi
     echo ""
 

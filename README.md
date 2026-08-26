@@ -14,6 +14,7 @@
 | `cpu_mem_analyzer.sh` | `cpu-mem` | CPU / 内存深度分析 | 排查负载高、内存不足、OOM 风险 |
 | `disk_analyzer.sh` | `disk` | 磁盘空间 / IO / 健康分析 | 排查磁盘满、IO 瓶颈、SMART 预警 |
 | `network_analyzer.sh` | `network` | 网络专项排查 | 接口、连通性、连接数、DNS |
+| `security_scanner.sh` | `security` | 杀毒软件 / 主机安全防护检测 | 排查服务器上是否部署杀毒 / HIDS / EDR |
 
 ## 快速开始
 
@@ -21,7 +22,7 @@
 
 ```bash
 # 赋予执行权限
-chmod +x server-scan sys_overview.sh cpu_mem_analyzer.sh disk_analyzer.sh network_analyzer.sh
+chmod +x server-scan sys_overview.sh cpu_mem_analyzer.sh disk_analyzer.sh network_analyzer.sh security_scanner.sh
 
 # 查看帮助
 ./server-scan --help
@@ -37,6 +38,9 @@ chmod +x server-scan sys_overview.sh cpu_mem_analyzer.sh disk_analyzer.sh networ
 ./server-scan disk -d /var/log -d /home/user
 ./server-scan disk -d "/var/log /home/user" --depth 5 --top 30
 
+# 扫描杀毒软件 / 主机安全防护
+./server-scan security
+
 # 运行所有诊断
 ./server-scan all
 ```
@@ -48,6 +52,7 @@ chmod +x server-scan sys_overview.sh cpu_mem_analyzer.sh disk_analyzer.sh networ
 ./cpu_mem_analyzer.sh
 ./disk_analyzer.sh
 ./network_analyzer.sh
+./security_scanner.sh
 ```
 
 ## 公共 CLI 选项
@@ -61,6 +66,7 @@ chmod +x server-scan sys_overview.sh cpu_mem_analyzer.sh disk_analyzer.sh networ
 | `-q, --quiet` | 静默模式（只输出报告路径一行，供 Agent 解析） |
 | `--json` | 在 stdout 输出一行 JSON 元数据（供 Agent 程序化消费） |
 | `--no-color` | 禁用 ANSI 颜色（Agent 调用时必需） |
+| `--lang LANG` | 指定输出语言（zh_CN / en_US，默认跟随系统 LANG） |
 | `-h, --help` | 显示帮助信息 |
 
 ### 脚本特定选项
@@ -114,8 +120,25 @@ chmod +x server-scan sys_overview.sh cpu_mem_analyzer.sh disk_analyzer.sh networ
 | 退出码 | 含义 |
 |--------|------|
 | 0 | 成功 |
-| 1 | 发现瓶颈 |
+| 1 | 发现瓶颈（或检测到防护软件） |
 | 2 | 参数错误 |
+
+## 国际化 (i18n)
+
+支持中英文双语输出，语言优先级：`SS_LANG` 环境变量 > 系统 `LANG` > 默认中文。
+
+```bash
+# 默认中文（跟随系统语言）
+./server-scan overview
+
+# 临时切换为英文（环境变量）
+SS_LANG=en_US ./server-scan overview
+
+# 通过参数指定语言（仅当次运行生效）
+./server-scan --lang en_US overview
+```
+
+语言包位于 `lib/i18n/`（`zh_CN.sh`、`en_US.sh`），新增语言只需复制模板并翻译。
 
 ## 系统支持
 
@@ -170,6 +193,12 @@ brew install coreutils smartmontools
 - 端口监听扫描
 - DNS 解析测试
 - 丢包与延迟分析
+
+**安全扫描报告** (`security_scanner.sh`)
+- 内置 20+ 款常见防护软件特征库（ClamAV / CrowdStrike / 云盾 / 云镜 / Wazuh 等）
+- 四类信号交叉检测：进程名、systemd 服务、安装包（rpm/dpkg）、特征路径
+- 按类别分类：传统杀毒 / 主机安全 (HIDS) / EDR 终端防护
+- 检测结论与部署建议（只读检测，不会停止或修改任何防护软件）
 
 ## 自定义配置
 
