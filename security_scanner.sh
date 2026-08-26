@@ -63,10 +63,24 @@ AV_SIGNATURES=(
     "AliYunDun|Alibaba Cloud|$(ss::msg MSG_SECURITY_CAT_HOST)|^AliYunDun ^AliHids ^aliyun_assist|aegis|aegis aliyun-assist|/usr/local/aegis"
     "AliSecGuard|Alibaba Cloud|$(ss::msg MSG_SECURITY_CAT_HOST)|^AliSecGuard|aegis|aegis|/usr/local/aegis"
     "Tencent YunJing|Tencent Cloud|$(ss::msg MSG_SECURITY_CAT_HOST)|^YDService|-yd-service|ydservice|/usr/local/qcloud/YunJing"
-    "QAX Safe|QAX|$(ss::msg MSG_SECURITY_CAT_HOST)|^qaxsafe|qax|qax|/usr/local/qaxsafe"
+    "QAX Safe|QAX|$(ss::msg MSG_SECURITY_CAT_HOST)|^qaxsafe ^qaxclient|qax|qax|/usr/local/qaxsafe /opt/qaxsafe"
     "Sangfor EDR|Sangfor|$(ss::msg MSG_SECURITY_CAT_EDR)|^sfedr|sfedr|sangfor|/usr/local/sangfor"
     "360 QClient|360|$(ss::msg MSG_SECURITY_CAT_HOST)|^qclient|360sd|360|/usr/local/qclient"
     "Huorong Linux|Huorong|$(ss::msg MSG_SECURITY_CAT_AV)|^hravd|huorong|huorong|/usr/local/hrav"
+    # --- 国际主流 EDR / 漏洞管理 ---
+    "Microsoft Defender for Endpoint|Microsoft|$(ss::msg MSG_SECURITY_CAT_EDR)|^wdavdaemon ^mdatp|mdatp|mdatp|/opt/microsoft/mdatp"
+    "Palo Alto Cortex XDR|Palo Alto Networks|$(ss::msg MSG_SECURITY_CAT_EDR)|^traps ^pqt_service|traps|cortex-xdr|/opt/traps /etc/paloaltonetworks"
+    "FortiClient Endpoint|Fortinet|$(ss::msg MSG_SECURITY_CAT_EDR)|^forticlientd ^fortiesmd|forticlient|forticlient|/opt/forticlient /etc/forticlient"
+    "Qualys Cloud Agent|Qualys|$(ss::msg MSG_SECURITY_CAT_HOST)|^qualys-cloud-agent|qualys-cloud-agent|qualys-cloud-agent|/usr/local/qualys"
+    "Tenable Nessus Agent|Tenable|$(ss::msg MSG_SECURITY_CAT_HOST)|^nessusd|nessus-agent|nessus-agent|/opt/nessus /Library/Nessus"
+    # --- 国内云厂商 / 主机安全 ---
+    "Huawei Cloud HSS|Huawei Cloud|$(ss::msg MSG_SECURITY_CAT_HOST)|^hostguard ^hostwatch|hostguard|hostguard|/usr/local/hostguard"
+    "Qingteng WanXiang|Qingteng Cloud|$(ss::msg MSG_SECURITY_CAT_HOST)|^qtagent|qingteng|qingteng|/usr/local/qingteng"
+    "Chaitin CloudWalker|Chaitin Tech|$(ss::msg MSG_SECURITY_CAT_HOST)|^cwagent|cloudwalker|cloudwalker|/usr/local/cloudwalker"
+    "Yulong HIDS|YSRC|$(ss::msg MSG_SECURITY_CAT_HOST)|^yulong-agent|yulong-hids|yulong|/usr/local/yulong-hids /usr/yulong-hids"
+    # --- macOS 专用安全工具 ---
+    "Santa|North Pole Security|$(ss::msg MSG_SECURITY_CAT_HOST)|^santad|com.northpolesec.santa|santa|/opt/santa /usr/local/bin/santactl"
+    "LuLu|Objective-See|$(ss::msg MSG_SECURITY_CAT_HOST)|^LuLu|lulu|lulu|/Applications/LuLu.app"
 )
 
 # 检测结果收集
