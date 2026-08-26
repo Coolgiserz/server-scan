@@ -110,7 +110,8 @@ while [[ $# -gt 0 ]]; do
     -d | --dir)
         if [[ -n "$2" && "$2" != -* ]]; then
             # 支持空格分隔的多个目录
-            for dir in $2; do
+            read -ra _dirs <<< "$2"
+            for dir in "${_dirs[@]}"; do
                 SCAN_DIRS+=("$dir")
             done
             DIR_SCAN_MODE="true"

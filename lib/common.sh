@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC1090
 # ==============================================================================
 # lib/common.sh - server-scan 共享函数库
 # ==============================================================================
@@ -228,7 +229,8 @@ ss::load_config() {
             done
 
             if [ "$matched" = "true" ]; then
-                eval "$key=\"$value\""
+                # 使用 printf -v 替代 eval，避免 value 经过 shell 命令解析器
+                printf -v "$key" '%s' "$value"
             fi
         done <"$config_file"
     fi

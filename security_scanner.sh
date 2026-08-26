@@ -160,7 +160,7 @@ for sig in "${AV_SIGNATURES[@]}"; do
     if [ -n "$proc_pattern" ]; then
         matched_procs=""
         for pat in $proc_pattern; do
-            hit="$(echo "$PS_SNAPSHOT" | grep -E "$pat" | sort -u | head -5 || true)"
+            hit="$(echo "$PS_SNAPSHOT" | grep -E -- "$pat" | sort -u | head -5 || true)"
             if [ -n "$hit" ]; then
                 matched_procs="${matched_procs}${hit}"$'\n'
             fi
@@ -175,7 +175,7 @@ for sig in "${AV_SIGNATURES[@]}"; do
     if [ -n "$svc_name" ] && [ -n "$SYSTEMD_SNAPSHOT" ]; then
         matched_svcs=""
         for svc in $svc_name; do
-            hit="$(echo "$SYSTEMD_SNAPSHOT" | grep -E "$svc" | awk '{print $1}' | sort -u | head -5 || true)"
+            hit="$(echo "$SYSTEMD_SNAPSHOT" | grep -E -- "$svc" | awk '{print $1}' | sort -u | head -5 || true)"
             if [ -n "$hit" ]; then
                 matched_svcs="${matched_svcs}${hit}"$'\n'
             fi
@@ -190,7 +190,7 @@ for sig in "${AV_SIGNATURES[@]}"; do
     if [ -n "$pkg_keys" ] && [ -n "$PKG_SNAPSHOT" ]; then
         matched_pkgs=""
         for kw in $pkg_keys; do
-            hit="$(echo "$PKG_SNAPSHOT" | grep -i "$kw" | sort -u | head -5 || true)"
+            hit="$(echo "$PKG_SNAPSHOT" | grep -i -- "$kw" | sort -u | head -5 || true)"
             if [ -n "$hit" ]; then
                 matched_pkgs="${matched_pkgs}${hit}"$'\n'
             fi
