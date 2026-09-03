@@ -11,7 +11,7 @@
 #
 # 配置文件查找顺序（找到第一个存在的文件即停止）:
 #   1. $NOTIFY_CONFIG              环境变量指定
-#   2. $SCRIPT_DIR/notify.conf     脚本同级目录
+#   2. $SCRIPT_DIR/notify.conf     项目根目录
 #   3. $HOME/.server-scan/notify.conf
 #   4. /etc/server-scan/notify.conf
 #
@@ -85,7 +85,7 @@ NOTIFY_MENTION_IDS=
 # 使用示例
 # ------------------------------------------------------------------------------
 # 1) 按需单次推送:
-#      ./server-scan sys-overview --notify
+#      ./server-scan overview --notify
 #
 # 2) 指定渠道与 webhook（临时调试，webhook 会出现在进程列表中）:
 #      ./server-scan disk --notify --webhook "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
@@ -94,7 +94,7 @@ NOTIFY_MENTION_IDS=
 #      NOTIFY_ON_ALERT_ONLY=true ./server-scan cpu-mem --notify
 #
 # 4) 测试配置是否正确:
-#      ./server-scan sys-overview --notify-test
+#      ./server-scan overview --notify-test
 #
 # 5) 使用非默认路径的配置文件:
 #      NOTIFY_CONFIG=/etc/server-scan/notify.conf ./server-scan network --notify

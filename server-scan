@@ -85,7 +85,7 @@ print_version() {
 # ==============================================================================
 check_script() {
     local script_name="$1"
-    local script_path="$SCRIPT_DIR/$script_name"
+    local script_path="$SCRIPT_DIR/core/$script_name"
     if [ ! -f "$script_path" ]; then
         echo "$(ss::msg MSG_ERROR_SCRIPT_NOT_FOUND) $script_path" >&2
         exit 1
@@ -119,23 +119,23 @@ esac
 case "$SUBCOMMAND" in
 overview)
     check_script "sys_overview.sh"
-    exec "$SCRIPT_DIR/sys_overview.sh" "$@"
+    exec "$SCRIPT_DIR/core/sys_overview.sh" "$@"
     ;;
 cpu-mem)
     check_script "cpu_mem_analyzer.sh"
-    exec "$SCRIPT_DIR/cpu_mem_analyzer.sh" "$@"
+    exec "$SCRIPT_DIR/core/cpu_mem_analyzer.sh" "$@"
     ;;
 disk)
     check_script "disk_analyzer.sh"
-    exec "$SCRIPT_DIR/disk_analyzer.sh" "$@"
+    exec "$SCRIPT_DIR/core/disk_analyzer.sh" "$@"
     ;;
 network)
     check_script "network_analyzer.sh"
-    exec "$SCRIPT_DIR/network_analyzer.sh" "$@"
+    exec "$SCRIPT_DIR/core/network_analyzer.sh" "$@"
     ;;
 security)
     check_script "security_scanner.sh"
-    exec "$SCRIPT_DIR/security_scanner.sh" "$@"
+    exec "$SCRIPT_DIR/core/security_scanner.sh" "$@"
     ;;
 all)
     echo "$(ss::msg MSG_SCAN_ALL_START)"
@@ -152,9 +152,9 @@ all)
     echo "$(ss::msg MSG_SCAN_STEP_1)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-        "$SCRIPT_DIR/sys_overview.sh" "${SCRIPT_ARGS[@]}" || true
+        "$SCRIPT_DIR/core/sys_overview.sh" "${SCRIPT_ARGS[@]}" || true
     else
-        "$SCRIPT_DIR/sys_overview.sh" || true
+        "$SCRIPT_DIR/core/sys_overview.sh" || true
     fi
     echo ""
 
@@ -162,9 +162,9 @@ all)
     echo "$(ss::msg MSG_SCAN_STEP_2)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-        "$SCRIPT_DIR/cpu_mem_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
+        "$SCRIPT_DIR/core/cpu_mem_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
     else
-        "$SCRIPT_DIR/cpu_mem_analyzer.sh" || true
+        "$SCRIPT_DIR/core/cpu_mem_analyzer.sh" || true
     fi
     echo ""
 
@@ -172,9 +172,9 @@ all)
     echo "$(ss::msg MSG_SCAN_STEP_3)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-        "$SCRIPT_DIR/disk_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
+        "$SCRIPT_DIR/core/disk_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
     else
-        "$SCRIPT_DIR/disk_analyzer.sh" || true
+        "$SCRIPT_DIR/core/disk_analyzer.sh" || true
     fi
     echo ""
 
@@ -182,9 +182,9 @@ all)
     echo "$(ss::msg MSG_SCAN_STEP_4)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-        "$SCRIPT_DIR/network_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
+        "$SCRIPT_DIR/core/network_analyzer.sh" "${SCRIPT_ARGS[@]}" || true
     else
-        "$SCRIPT_DIR/network_analyzer.sh" || true
+        "$SCRIPT_DIR/core/network_analyzer.sh" || true
     fi
     echo ""
 
@@ -192,9 +192,9 @@ all)
     echo "$(ss::msg MSG_SCAN_STEP_5)"
     echo "=========================================="
     if [ ${#SCRIPT_ARGS[@]} -gt 0 ]; then
-        "$SCRIPT_DIR/security_scanner.sh" "${SCRIPT_ARGS[@]}" || true
+        "$SCRIPT_DIR/core/security_scanner.sh" "${SCRIPT_ARGS[@]}" || true
     else
-        "$SCRIPT_DIR/security_scanner.sh" || true
+        "$SCRIPT_DIR/core/security_scanner.sh" || true
     fi
     echo ""
 

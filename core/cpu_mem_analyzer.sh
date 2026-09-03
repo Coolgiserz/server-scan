@@ -16,8 +16,8 @@ ENABLE_MPSTAT="true" # Linux 下有效，macOS 自动忽略
 SAMPLE_INTERVAL=1
 SAMPLE_COUNT=3
 
-# 获取脚本目录
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 获取项目根目录（脚本位于 core/ 子目录，根目录为其上一级）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # 加载共享库
 source "$SCRIPT_DIR/lib/common.sh"

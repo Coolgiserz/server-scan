@@ -49,13 +49,11 @@ jobs:
           tar czf server-scan-${{ steps.version.outputs.version }}.tar.gz \
             --transform 's,^,server-scan/,' \
             server-scan \
-            sys_overview.sh \
-            cpu_mem_analyzer.sh \
-            disk_analyzer.sh \
-            network_analyzer.sh \
+            core/ \
             lib/ \
             README.md \
-            disk_analyzer.conf.example
+            disk_analyzer.conf.example \
+            notify.conf.example
 
       - name: Generate release notes
         id: notes
@@ -81,7 +79,7 @@ jobs:
             echo "cd server-scan"
             echo ""
             echo "# 赋予执行权限"
-            echo "chmod +x server-scan *.sh"
+            echo "chmod +x server-scan core/*.sh"
             echo ""
             echo "# 运行"
             echo "./server-scan --help"
