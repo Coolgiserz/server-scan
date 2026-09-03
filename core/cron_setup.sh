@@ -130,10 +130,13 @@ _ss_cron_build_expr() {
     case "$freq" in
     hourly)
         minute=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_MINUTE)" "0")
-        case "$minute" in
-        '' | *[!0-9]*) ss::log_error "$(ss::msg MSG_CRON_ERR_EMPTY)"; return 1 ;;
-        esac
-        expr="$minute * * * *"
+        # 校验 0-59（允许 09 这类前导零写法）：
+        # 越界值会生成 99 * * * * 这类永不触发的非法表达式
+        if ! printf '%s' "$minute" | grep -Eq '^([0-9]|[0-5][0-9])$'; then
+            ss::log_error "$(ss::msg MSG_CRON_ERR_INVALID_CHOICE)"
+            return 1
+        fi
+        expr="$((10#$minute)) * * * *"
         ;;
     daily)
         local hm
@@ -269,6 +272,15 @@ _ss_cron_add() {
     local out_dir
     out_dir=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_OUTPUT)" "/var/log/server-scan")
 
+    # 立即尝试创建输出目录；权限不足时提示（不阻断，cron 侧还有 mkdir 兜底）
+    if [ ! -d "$out_dir" ]; then
+        if mkdir -p "$out_dir" 2>/dev/null; then
+            echo "> ✅ 已创建输出目录: $out_dir"
+        else
+            echo "> ⚠️ 无法创建输出目录（权限不足?）: $out_dir"
+        fi
+    fi
+
     echo ""
     local extra
     extra=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_ARGS)" "")
@@ -288,7 +300,9 @@ _ss_cron_add() {
     # crontab 中 % 必须转义为 \%，否则其后内容会被当作标准输入
     local date_expr='$(date +\%Y\%m\%d_\%H\%M\%S)'
     local report_file="${out_dir}/${sub}_${date_expr}.md"
-    local cmd="${notify_env}PATH=${CRON_PATH} ${SERVER_SCAN_BIN} ${sub} -o \"${report_file}\"${notify_arg}"
+    # mkdir -p 兜底：目录不存在时 tee 写入失败，而分析脚本仍以 0 退出，
+    # 会造成"任务执行成功却无报告"的静默故障
+    local cmd="${notify_env}PATH=${CRON_PATH} mkdir -p \"${out_dir}\" && ${SERVER_SCAN_BIN} ${sub} -o \"${report_file}\"${notify_arg}"
     if [ -n "$extra" ]; then
         cmd="${cmd} ${extra}"
     fi
@@ -380,14 +394,19 @@ _ss_cron_remove() {
     echo "### $(ss::msg MSG_CRON_PREVIEW)"
     echo ""
     echo '```'
-    printf '%s\n' "$current" | awk -v mark="$CRON_MARK" -v target="$pick" '
-    BEGIN { n = 0; show = 0 }
+    printf '%s\n' "$current" | awk -v mark="$CRON_MARK" -v target="$pick" -v bin="$SERVER_SCAN_BIN" '
+    BEGIN { n = 0; pending = 0 }
     {
         if (index($0, mark) == 1) {
             n++
-            if (n == target) { show = 2 }
+            if (n == target) { pending = 1; print; next }
         }
-        if (show > 0) { print; show-- }
+        if (pending) {
+            pending = 0
+            # 仅显示确实属于 server-scan 的命令，避免预览到他人条目
+            if (index($0, bin) > 0) { print }
+            next
+        }
     }
     '
     echo '```'
@@ -402,14 +421,20 @@ _ss_cron_remove() {
     backup=$(_ss_cron_backup)
 
     # 删除目标条目的标记行与其后的命令行
-    printf '%s\n' "$current" | awk -v mark="$CRON_MARK" -v target="$pick" '
-    BEGIN { n = 0; skip = 0 }
+    printf '%s\n' "$current" | awk -v mark="$CRON_MARK" -v target="$pick" -v bin="$SERVER_SCAN_BIN" '
+    BEGIN { n = 0; pending = 0 }
     {
+        # 命中目标标记行则删除，并置 pending
         if (index($0, mark) == 1) {
             n++
-            if (n == target) { skip = 2; next }
+            if (n == target) { pending = 1; next }
         }
-        if (skip > 0) { skip--; next }
+        # 仅当下一行确实属于 server-scan 时才连带删除，
+        # 避免标记行位于末尾或紧邻他人任务时误删
+        if (pending) {
+            pending = 0
+            if (index($0, bin) > 0) next
+        }
         print
     }
     ' | crontab -

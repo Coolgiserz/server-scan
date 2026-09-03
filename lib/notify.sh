@@ -117,6 +117,17 @@ ss::notify_init() {
     feishu | FeiShu | FEISHU | lark | Lark) NOTIFY_CHANNEL="feishu" ;;
     esac
 
+    # 数值型配置兜底：非法值会导致算术展开失败，使推送以晦涩错误告终
+    case "$NOTIFY_TIMEOUT" in
+    '' | *[!0-9]*) NOTIFY_TIMEOUT=10 ;;
+    esac
+    case "$NOTIFY_MAX_BYTES" in
+    '' | *[!0-9]*) NOTIFY_MAX_BYTES=20000 ;;
+    esac
+    case "$NOTIFY_SUMMARY_LINES" in
+    '' | *[!0-9]*) NOTIFY_SUMMARY_LINES=20 ;;
+    esac
+
     # 配置文件权限检查（含密钥时不应对其他用户可读）
     if [ -n "$NOTIFY_CONFIG_FILE" ] && [ -n "$NOTIFY_SECRET" ]; then
         if [ -r "$NOTIFY_CONFIG_FILE" ]; then
@@ -498,12 +509,13 @@ _ss_feishu_send() {
     fi
 
     # 发送（curl --max-time 控制单次超时，run_with_timeout 兜底防挂起）
+    # 不重试：请求可能已到达飞书但响应超时，重试会造成群内重复消息；
+    # 定时巡检场景下，下一次周期执行即可补偿偶发失败
     local response
     response=$(ss::run_with_timeout "$((NOTIFY_TIMEOUT + 5))" \
         curl -sS -X POST \
         -H 'Content-Type: application/json' \
         --max-time "$NOTIFY_TIMEOUT" \
-        --retry 1 \
         -d "$payload" \
         "$NOTIFY_WEBHOOK" 2>&1)
     local curl_ret=$?
