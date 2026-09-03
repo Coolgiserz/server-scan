@@ -33,6 +33,7 @@ $(ss::msg MSG_HELP_USAGE):
   network         $(ss::msg MSG_SCAN_SUBCMD_NETWORK)
   security        $(ss::msg MSG_SCAN_SUBCMD_SECURITY)
   all             $(ss::msg MSG_SCAN_SUBCMD_ALL)
+  cron            $(ss::msg MSG_SCAN_SUBCMD_CRON)
 
 $(ss::msg MSG_HELP_COMMON_OPTIONS):
   -o, --output PATH     $(ss::msg MSG_HELP_OUTPUT)
@@ -136,6 +137,10 @@ network)
 security)
     check_script "security_scanner.sh"
     exec "$SCRIPT_DIR/core/security_scanner.sh" "$@"
+    ;;
+cron)
+    check_script "cron_setup.sh"
+    exec "$SCRIPT_DIR/core/cron_setup.sh" "$@"
     ;;
 all)
     echo "$(ss::msg MSG_SCAN_ALL_START)"

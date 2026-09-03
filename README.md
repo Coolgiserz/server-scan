@@ -15,6 +15,7 @@
 | `core/disk_analyzer.sh` | `disk` | 磁盘空间 / IO / 健康分析 | 排查磁盘满、IO 瓶颈、SMART 预警 |
 | `core/network_analyzer.sh` | `network` | 网络专项排查 | 接口、连通性、连接数、DNS |
 | `core/security_scanner.sh` | `security` | 杀毒软件 / 主机安全防护检测 | 排查服务器上是否部署杀毒 / HIDS / EDR |
+| `core/cron_setup.sh` | `cron` | 定时任务管理 | 交互式配置 crontab 定时巡检 |
 
 ## 目录结构
 
@@ -26,7 +27,8 @@ server-scan/
 │   ├── cpu_mem_analyzer.sh
 │   ├── disk_analyzer.sh
 │   ├── network_analyzer.sh
-│   └── security_scanner.sh
+│   ├── security_scanner.sh
+│   └── cron_setup.sh       # 定时任务管理
 ├── lib/                     # 共享库与语言包
 │   ├── common.sh            # 通用函数（进度、报告、超时、配置加载）
 │   ├── cli.sh               # 统一 CLI 参数解析
@@ -406,11 +408,51 @@ NOTIFY_MODE=full NOTIFY_MSG_TYPE=card ./server-scan overview --notify
 
 ## 定时任务
 
+### 交互式配置（推荐）
+
+```bash
+# 打开交互菜单：查看 / 添加 / 删除
+./server-scan cron
+
+# 也可直接使用子命令
+./server-scan cron list      # 查看已有的定时任务
+./server-scan cron add       # 添加
+./server-scan cron remove    # 删除
+```
+
+添加流程会依次引导你选择：扫描任务 → 执行频率（每小时/每天/每周/每月/自定义）→ 时间 →
+报告输出目录 → 是否推送飞书（可选仅告警时推送）→ 附加参数（如 `--only docker`），
+最后**预览生成的 crontab 条目并确认后才会写入**。
+
+生成的条目示例：
+
+```
+# server-scan:overview
+30 2 * * * PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /path/to/server-scan overview -o "/var/log/server-scan/overview_$(date +\%Y\%m\%d_\%H\%M\%S).md" --notify
+```
+
+安全设计：
+
+- 只操作带 `# server-scan:` 标记的条目，**不会影响你已有的其他定时任务**
+- 每次写入前自动备份原 crontab 到 `~/.server-scan/crontab.backup.<时间戳>`
+- 条目内自动补全 `PATH`，避免 cron 环境下找不到 `iostat`、`smartctl` 等命令
+- 自动把报告文件名中的 `%` 转义为 `\%`（cron 特殊字符）
+
+### 手动配置
+
+也可以直接编辑 crontab：
+
 ```bash
 # 每小时生成一次报告
 0 * * * * /path/to/server-scan overview -o /var/log/sys_overview.md
 0 * * * * /path/to/server-scan disk -o /var/log/disk_report.md
+
+# 每天凌晨 2 点巡检，仅在发现告警时推送飞书
+0 2 * * * NOTIFY_ON_ALERT_ONLY=true /path/to/server-scan overview --notify
 ```
+
+> 手动配置时注意：cron 的 `PATH` 与终端不同，建议使用绝对路径；
+> 命令中的 `%` 需转义为 `\%`，否则其后的内容会被当作标准输入。
 
 ## 许可证
 
