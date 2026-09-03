@@ -34,6 +34,11 @@ NOTIFY_ON_ALERT_ONLY="${NOTIFY_ON_ALERT_ONLY:-false}" # 仅在检测到告警时
 NOTIFY_MENTION_ALL="${NOTIFY_MENTION_ALL:-false}"    # 是否 @所有人（飞书）
 NOTIFY_MENTION_IDS="${NOTIFY_MENTION_IDS:-}"         # @指定用户 ID，逗号分隔（飞书）
 NOTIFY_SUMMARY_LINES="${NOTIFY_SUMMARY_LINES:-20}"   # 摘要模式提取的告警行上限
+# 表格呈现方式（飞书 text 与卡片 lark_md 均不支持 Markdown 表格）:
+#   kv   - 转为 "🔴 **维度**: 说明" 列表，两种消息类型下都美观（默认）
+#   code - 保留表格并包裹代码块，卡片下等宽对齐
+#   raw  - 不做转换
+NOTIFY_TABLE_STYLE="${NOTIFY_TABLE_STYLE:-kv}"
 
 # ------------------------------------------------------------------------------
 # 内部日志（写 stderr，避免污染 stdout 与 JSON 输出）
@@ -152,11 +157,13 @@ _ss_notify_extract_summary() {
 
     if [ -f "$report_path" ]; then
         local alerts
+        # keep_first=1: 这些是从报告中筛出的零散数据行，首行不是表头
         alerts=$(grep -E '🔴|🟡' "$report_path" 2>/dev/null |
             sed 's/^[[:space:]]*//' |
             grep -v '^$' |
             sort -u |
-            head -n "$NOTIFY_SUMMARY_LINES")
+            head -n "$NOTIFY_SUMMARY_LINES" |
+            _ss_notify_format_tables 1)
         if [ -n "$alerts" ]; then
             if [ -n "$out" ]; then
                 out="${out}"$'\n'"$(ss::msg MSG_NOTIFY_SECTION_ALERTS)"$'\n'"${alerts}"
@@ -174,20 +181,107 @@ _ss_notify_extract_summary() {
 }
 
 # ------------------------------------------------------------------------------
-# 全文模式: 读取报告并截断到 MAX_BYTES（避免超出飞书 30KB 限制）
+# Markdown 表格格式化
+# 飞书 text 与卡片 lark_md 均不支持 Markdown 表格，裸竖线可读性很差，
+# 因此按 NOTIFY_TABLE_STYLE 统一转换为飞书友好的呈现方式
+# ------------------------------------------------------------------------------
+_ss_notify_format_tables() {
+    # $1=keep_first: 1 表示首行按数据处理（用于已提取的零散告警行，无表头）
+    local keep_first="${1:-0}"
+    case "$NOTIFY_TABLE_STYLE" in
+    raw)
+        cat
+        ;;
+    code)
+        awk '
+        BEGIN { in_tbl = 0 }
+        {
+            if ($0 ~ /^\|/) {
+                if (!in_tbl) { print "```"; in_tbl = 1 }
+                print
+                next
+            }
+            if (in_tbl) { print "```"; print ""; in_tbl = 0 }
+            print
+        }
+        END { if (in_tbl) print "```" }
+        '
+        ;;
+    kv | *)
+        awk -v keep_first="$keep_first" '
+        BEGIN { in_tbl = 0; icons = "🔴🟡🟢⚪✅❌⚠️ℹ️" }
+        {
+            if ($0 ~ /^\|/) {
+                # 分隔行 (|---|:---:|) 去掉 | - : 后为空
+                tmp = $0
+                gsub(/[|: -]/, "", tmp)
+                if (tmp == "") next
+                # 表格首行为表头，其列名与数据行语义重复，丢弃
+                # keep_first=1 时首行即数据（已提取的零散行），不丢弃
+                if (!in_tbl) {
+                    in_tbl = 1
+                    if (!keep_first) next
+                }
+
+                s = $0
+                sub(/^\|/, "", s)
+                sub(/\|$/, "", s)
+                n = split(s, cols, "|")
+
+                # 收集非空的列
+                cnt = 0
+                for (i = 1; i <= n; i++) {
+                    gsub(/^ +| +$/, "", cols[i])
+                    if (cols[i] == "" || cols[i] == "-") continue
+                    vals[++cnt] = cols[i]
+                }
+                if (cnt == 0) next
+
+                # 首列若为状态图标，则作为前缀，key 顺延到第二列
+                prefix = ""
+                k = 1
+                if (cnt > 1 && index(icons, vals[1]) > 0) {
+                    prefix = vals[1] " "
+                    k = 2
+                }
+
+                key = vals[k]
+                vs = ""
+                for (i = k + 1; i <= cnt; i++) {
+                    vs = (vs == "") ? vals[i] : vs "   " vals[i]
+                }
+                # 超长值（如深层文件路径）会撑宽卡片，做截断
+                if (length(vs) > 100) vs = substr(vs, 1, 97) "..."
+                if (vs != "") print prefix "**" key "**: " vs
+                else print prefix "**" key "**"
+                next
+            }
+            if (in_tbl) { in_tbl = 0; print "" }
+            print
+        }
+        '
+        ;;
+    esac
+}
+
+# ------------------------------------------------------------------------------
+# 全文模式: 读取报告、格式化表格后截断到 MAX_BYTES（避免超出飞书 30KB 限制）
 # 使用 iconv -c 丢弃截断产生的不完整 UTF-8 字节
 # ------------------------------------------------------------------------------
 _ss_notify_read_full() {
     local report_path="$1"
+    local content
+    content=$(_ss_notify_format_tables <"$report_path" 2>/dev/null)
+
     local out
-    out=$(head -c "$NOTIFY_MAX_BYTES" "$report_path" 2>/dev/null |
+    out=$(printf '%s' "$content" | head -c "$NOTIFY_MAX_BYTES" 2>/dev/null |
         iconv -f utf-8 -t utf-8 -c 2>/dev/null)
     if [ -z "$out" ]; then
-        out=$(head -c "$NOTIFY_MAX_BYTES" "$report_path" 2>/dev/null)
+        out=$(printf '%s' "$content" | head -c "$NOTIFY_MAX_BYTES" 2>/dev/null)
     fi
 
     local size
-    size=$(wc -c <"$report_path" 2>/dev/null | tr -d ' ' | tr -d '\n')
+    size=$(printf '%s' "$content" | wc -c 2>/dev/null | tr -d ' ' | tr -d '\n')
     if [ -n "$size" ] && [ "$size" -gt "$NOTIFY_MAX_BYTES" ] 2>/dev/null; then
         out="${out}"$'\n'"..."$'\n'"$(ss::msgf MSG_NOTIFY_TRUNCATED "$report_path")"
     fi

@@ -342,6 +342,7 @@ chmod 600 notify.conf
 | `NOTIFY_MENTION_ALL` | `false` | 是否 @所有人 |
 | `NOTIFY_MENTION_IDS` | 空 | @指定用户 open_id，逗号分隔 |
 | `NOTIFY_SUMMARY_LINES` | `20` | 摘要模式提取的告警行上限 |
+| `NOTIFY_TABLE_STYLE` | `kv` | 表格呈现：`kv` 转列表 / `code` 代码块 / `raw` 原样 |
 
 ### 配置优先级
 
@@ -373,6 +374,28 @@ NOTIFY_CONFIG=/etc/server-scan/notify.conf ./server-scan network --notify
 # 推送完整报告并使用卡片消息
 NOTIFY_MODE=full NOTIFY_MSG_TYPE=card ./server-scan overview --notify
 ```
+
+### 消息呈现
+
+飞书 `text` 与卡片 `lark_md` **都不支持 Markdown 表格**，直接推送原报告会出现大量裸竖线，
+可读性很差。脚本默认（`NOTIFY_TABLE_STYLE=kv`）把表格转换为结构化列表：
+
+转换前（报告中的表格）：
+
+```
+| 级别 | 维度 | 结论 |
+|------|------|------|
+| 🔴 | 磁盘 | /var 使用率 97%（>= 90%） |
+```
+
+转换后（飞书消息中）：
+
+```
+🔴 **磁盘**: /var 使用率 97%（>= 90%）
+```
+
+卡片模式下 `**加粗**` 会被渲染，状态 emoji 也会正常显示。
+如需保留原始表格，可设置 `NOTIFY_TABLE_STYLE=code`（表格以代码块等宽展示）或 `raw`（不做转换）。
 
 ### 安全提示
 
