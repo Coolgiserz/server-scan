@@ -369,6 +369,14 @@ if [ "$JSON_OUTPUT" = "true" ]; then
     ss::print_json_metadata "success" "$REPORT_PATH" "security_scanner.sh" 0 "$summary" "$found_list"
 fi
 
+# 通知推送（未启用 --notify 时静默跳过，推送失败不影响主流程）
+if [ "$total_found" -eq 0 ]; then
+    notify_summary="$(ss::msg MSG_SECURITY_JSON_SUMMARY_NONE)"
+else
+    notify_summary="$(ss::msgf MSG_SECURITY_JSON_SUMMARY_FOUND "$total_found")"
+fi
+ss::notify_send "$(ss::msg MSG_SECURITY_REPORT_TITLE)" "$REPORT_PATH" "$notify_summary" || true
+
 # 显式退出码：检测到防护软件时返回 1（与 sys_overview.sh 保持一致的约定）
 if [ "$total_found" -gt 0 ]; then
     exit 1

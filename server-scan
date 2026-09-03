@@ -41,6 +41,8 @@ $(ss::msg MSG_HELP_COMMON_OPTIONS):
       --json            $(ss::msg MSG_HELP_JSON)
       --no-color        $(ss::msg MSG_HELP_NO_COLOR)
       --lang LANG       $(ss::msg MSG_HELP_LANG)
+      --notify          $(ss::msg MSG_HELP_NOTIFY)
+      --notify-test     $(ss::msg MSG_HELP_NOTIFY_TEST)
   -h, --help            $(ss::msg MSG_HELP_HELP)
   -v, --version         $(ss::msg MSG_HELP_VERSION)
 

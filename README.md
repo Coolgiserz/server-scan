@@ -67,6 +67,10 @@ chmod +x server-scan sys_overview.sh cpu_mem_analyzer.sh disk_analyzer.sh networ
 | `--json` | 在 stdout 输出一行 JSON 元数据（供 Agent 程序化消费） |
 | `--no-color` | 禁用 ANSI 颜色（Agent 调用时必需） |
 | `--lang LANG` | 指定输出语言（zh_CN / en_US，默认跟随系统 LANG） |
+| `--notify` | 启用通知推送（将扫描结果发送到配置的 Channel） |
+| `--notify-channel NAME` | 指定通知渠道（默认: feishu） |
+| `--webhook URL` | 指定 webhook 地址（覆盖配置文件） |
+| `--notify-test` | 发送一条测试消息，验证通知配置是否正确 |
 | `-h, --help` | 显示帮助信息 |
 
 ### 脚本特定选项
@@ -233,6 +237,86 @@ DOCKER_CONTAINER_TOP=10
 ```
 
 完整示例配置文件请参考 `disk_analyzer.conf.example`。
+
+通知推送相关配置见下方 [通知推送 (Channel)](#通知推送-channel)，示例文件为 `notify.conf.example`。
+
+## 通知推送 (Channel)
+
+支持将扫描结果推送到外部 Channel，当前内置**飞书自定义机器人**。
+
+### 快速配置
+
+```bash
+# 1. 复制配置文件模板
+cp notify.conf.example notify.conf
+
+# 2. 填入 webhook（飞书: 群设置 -> 群机器人 -> 添加自定义机器人）
+vi notify.conf
+
+# 3. 设置权限（配置文件含密钥，禁止其他用户读取）
+chmod 600 notify.conf
+
+# 4. 验证配置是否正确
+./server-scan overview --notify-test
+
+# 5. 执行扫描并推送
+./server-scan overview --notify
+```
+
+### 配置项
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `NOTIFY_ENABLED` | `false` | 是否默认启用推送；为 false 时用 `--notify` 按需启用 |
+| `NOTIFY_CHANNEL` | `feishu` | 通知渠道，当前支持 `feishu` |
+| `NOTIFY_WEBHOOK` | 空 | Webhook 地址（**必填**） |
+| `NOTIFY_SECRET` | 空 | 签名密钥，机器人开启签名校验时填写 |
+| `NOTIFY_MSG_TYPE` | `text` | 消息类型：`text` 纯文本 / `card` 交互式卡片 |
+| `NOTIFY_MODE` | `summary` | `summary` 仅推送告警摘要 / `full` 推送完整报告 |
+| `NOTIFY_MAX_BYTES` | `20000` | 全文模式下正文最大字节数 |
+| `NOTIFY_TIMEOUT` | `10` | HTTP 请求超时（秒） |
+| `NOTIFY_ON_ALERT_ONLY` | `false` | 仅在检测到告警（🔴/🟡）时推送 |
+| `NOTIFY_MENTION_ALL` | `false` | 是否 @所有人 |
+| `NOTIFY_MENTION_IDS` | 空 | @指定用户 open_id，逗号分隔 |
+| `NOTIFY_SUMMARY_LINES` | `20` | 摘要模式提取的告警行上限 |
+
+### 配置优先级
+
+命令行参数 > 环境变量 > 配置文件。
+
+配置文件查找顺序（找到第一个存在的文件即停止）：
+
+1. `$NOTIFY_CONFIG`
+2. 脚本 `-c/--config` 指定的配置文件
+3. `$SCRIPT_DIR/notify.conf`
+4. `$HOME/.server-scan/notify.conf`
+5. `/etc/server-scan/notify.conf`
+
+### 使用示例
+
+```bash
+# 按需单次推送
+./server-scan overview --notify
+
+# 临时指定 webhook（调试用；webhook 会出现在进程列表中）
+./server-scan disk --notify --webhook "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+
+# 定时巡检，仅在有告警时推送（避免正常状态刷屏）
+NOTIFY_ON_ALERT_ONLY=true ./server-scan overview --notify
+
+# 使用非默认路径的配置文件
+NOTIFY_CONFIG=/etc/server-scan/notify.conf ./server-scan network --notify
+
+# 推送完整报告并使用卡片消息
+NOTIFY_MODE=full NOTIFY_MSG_TYPE=card ./server-scan overview --notify
+```
+
+### 安全提示
+
+- `notify.conf` 可能包含 webhook 与签名密钥，已加入 `.gitignore`，请勿提交到代码仓库
+- 建议设置 `chmod 600 notify.conf`；权限过宽时脚本会给出警告
+- `--webhook` 参数会出现在进程列表中，生产环境建议改用配置文件
+- 推送失败不会影响扫描本身，也不会改变脚本退出码
 
 ## 定时任务
 

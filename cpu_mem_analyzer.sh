@@ -1010,6 +1010,9 @@ if [ "$JSON_OUTPUT" = "true" ]; then
     ss::print_json_metadata "success" "$REPORT_PATH" "cpu_mem_analyzer.sh" 0 "$summary" ""
 fi
 
+# 通知推送（未启用 --notify 时静默跳过，推送失败不影响主流程）
+ss::notify_send "$(ss::msg MSG_CPU_MEM_REPORT_TITLE)" "$REPORT_PATH" || true
+
 # 显式退出码
 exit 0
 

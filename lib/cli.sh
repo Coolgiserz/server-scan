@@ -6,6 +6,10 @@
 # 使用方法: source "$SCRIPT_DIR/lib/cli.sh"
 # ==============================================================================
 
+# 加载通知库（提供 ss::notify_init / ss::notify_send 等函数）
+# shellcheck source=./notify.sh
+source "$SCRIPT_DIR/lib/notify.sh"
+
 # ------------------------------------------------------------------------------
 # 默认配置（只在未设置时才初始化，避免覆盖脚本的默认值）
 # ------------------------------------------------------------------------------
@@ -14,6 +18,12 @@ JSON_OUTPUT="${JSON_OUTPUT:-false}"
 NO_COLOR="${NO_COLOR:-false}"
 CONFIG_FILE="${CONFIG_FILE:-}"
 REPORT_PATH="${REPORT_PATH:-}"
+
+# 命令行传入的通知参数（优先级高于配置文件，由 ss::notify_init 消费）
+SS_CLI_NOTIFY_ENABLED="${SS_CLI_NOTIFY_ENABLED:-false}"
+SS_CLI_NOTIFY_CHANNEL="${SS_CLI_NOTIFY_CHANNEL:-}"
+SS_CLI_WEBHOOK="${SS_CLI_WEBHOOK:-}"
+SS_CLI_NOTIFY_TEST="${SS_CLI_NOTIFY_TEST:-false}"
 
 # ------------------------------------------------------------------------------
 # 解析公共参数
@@ -58,6 +68,39 @@ ss::parse_common_args() {
             NO_COLOR="true"
             i=$((i + 1))
             ;;
+        --notify)
+            NOTIFY_ENABLED="true"
+            SS_CLI_NOTIFY_ENABLED="true"
+            i=$((i + 1))
+            ;;
+        --notify-channel)
+            if [ $((i + 1)) -lt ${#args[@]} ] && [[ "${args[$((i + 1))]}" != -* ]]; then
+                NOTIFY_CHANNEL="${args[$((i + 1))]}"
+                SS_CLI_NOTIFY_CHANNEL="${args[$((i + 1))]}"
+                i=$((i + 2))
+            else
+                ss::log_error "$(ss::msgf MSG_ERROR_NEED_ARG "--notify-channel")"
+                exit 2
+            fi
+            ;;
+        --webhook)
+            if [ $((i + 1)) -lt ${#args[@]} ] && [[ "${args[$((i + 1))]}" != -* ]]; then
+                NOTIFY_WEBHOOK="${args[$((i + 1))]}"
+                SS_CLI_WEBHOOK="${args[$((i + 1))]}"
+                NOTIFY_ENABLED="true"
+                SS_CLI_NOTIFY_ENABLED="true"
+                i=$((i + 2))
+            else
+                ss::log_error "$(ss::msgf MSG_ERROR_NEED_ARG "--webhook")"
+                exit 2
+            fi
+            ;;
+        --notify-test)
+            NOTIFY_ENABLED="true"
+            SS_CLI_NOTIFY_ENABLED="true"
+            SS_CLI_NOTIFY_TEST="true"
+            i=$((i + 1))
+            ;;
         --lang)
             if [ $((i + 1)) -lt ${#args[@]} ] && [[ "${args[$((i + 1))]}" != -* ]]; then
                 SS_LANG="${args[$((i + 1))]}"
@@ -84,6 +127,20 @@ ss::parse_common_args() {
             ;;
         esac
     done
+
+    # --------------------------------------------------------------------------
+    # 通知配置初始化
+    # 必须在命令行参数解析完成后调用，以保证命令行参数优先于配置文件
+    # --------------------------------------------------------------------------
+    ss::notify_init
+
+    # --notify-test: 发送一条测试消息后立即退出（不执行扫描）
+    if [ "$SS_CLI_NOTIFY_TEST" = "true" ]; then
+        if ss::notify_test; then
+            exit 0
+        fi
+        exit 1
+    fi
 }
 
 # ------------------------------------------------------------------------------
@@ -106,6 +163,11 @@ $(ss::msg MSG_HELP_COMMON_OPTIONS):
       --json            $(ss::msg MSG_HELP_JSON)
       --no-color        $(ss::msg MSG_HELP_NO_COLOR)
       --lang LANG       $(ss::msg MSG_HELP_LANG)
+      --notify          $(ss::msg MSG_HELP_NOTIFY)
+      --notify-channel NAME
+                        $(ss::msg MSG_HELP_NOTIFY_CHANNEL)
+      --webhook URL     $(ss::msg MSG_HELP_WEBHOOK)
+      --notify-test     $(ss::msg MSG_HELP_NOTIFY_TEST)
   -h, --help            $(ss::msg MSG_HELP_HELP)
 
 $script_specific_options

@@ -98,7 +98,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/cli.sh"
 
 # 加载配置文件
-ss::load_config "$CONFIG_FILE" DISK_ INODE_ IO_ LARGE_FILE_ LOG_ DOCKER_ MOUNT_ SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_
+ss::load_config "$CONFIG_FILE" DISK_ INODE_ IO_ LARGE_FILE_ LOG_ DOCKER_ MOUNT_ SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_ NOTIFY_
 
 # 解析公共参数（必须在主shell中直接调用，不能用命令替换）
 ss::parse_common_args "$@"
@@ -1238,6 +1238,9 @@ ss::report_end "$REPORT_PATH"
 if [ "$JSON_OUTPUT" = "true" ]; then
     ss::print_json_metadata "success" "$REPORT_PATH" "disk_analyzer.sh" 0 "" ""
 fi
+
+# 通知推送（未启用 --notify 时静默跳过，推送失败不影响主流程）
+ss::notify_send "$(ss::msg MSG_DISK_REPORT_TITLE)" "$REPORT_PATH" || true
 
 exit 0
 
