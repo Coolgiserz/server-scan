@@ -150,8 +150,76 @@ ss::notify_init() {
 # ------------------------------------------------------------------------------
 _ss_notify_has_alert() {
     local report_path="$1"
+    local alerts_json="${2:-${report_path%.md}.json}"
+
+    # 优先依据结构化告警 JSON 的 summary.total 判定，
+    # 避免依赖报告文本中的 emoji（可能被截断或格式调整而丢失）
+    if [ -f "$alerts_json" ]; then
+        local total
+        total=$(grep -oE '"total": [0-9]+' "$alerts_json" 2>/dev/null |
+            head -1 | grep -oE '[0-9]+')
+        if [ -n "$total" ] && [ "$total" -gt 0 ]; then
+            return 0
+        fi
+        return 1
+    fi
+
     [ -f "$report_path" ] || return 1
     grep -qE '🔴|🟡' "$report_path" 2>/dev/null
+}
+
+# ------------------------------------------------------------------------------
+# 从结构化告警 JSON 构造告警正文（notify 的首选数据源）
+# 相比从 Markdown 反向解析，字段语义明确，无格式耦合
+# ------------------------------------------------------------------------------
+_ss_notify_alerts_from_json() {
+    local json_path="$1"
+    local out=""
+    local n=0
+    local line icon level dim detail value threshold
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        n=$((n + 1))
+
+        level=$(ss::alert_field "$line" level)
+        dim=$(ss::alert_field "$line" dimension)
+        detail=$(ss::alert_field "$line" detail)
+        value=$(ss::alert_field "$line" value)
+        threshold=$(ss::alert_field "$line" threshold)
+
+        case "$level" in
+        critical) icon="🔴" ;;
+        warning) icon="🟡" ;;
+        *) icon="ℹ️" ;;
+        esac
+
+        if [ "$n" -gt "$NOTIFY_SUMMARY_LINES" ]; then
+            continue
+        fi
+
+        local text="${icon} **${dim}**"
+        if [ -n "$detail" ] && [ "$detail" != "-" ]; then
+            text="${text}: ${detail}"
+        fi
+        # 当前值与阈值并列展示，便于判断超出程度
+        if [ -n "$value" ] && [ "$value" != "-" ]; then
+            text="${text}  (${value}"
+            if [ -n "$threshold" ] && [ "$threshold" != "-" ]; then
+                text="${text} / 阈值 ${threshold}"
+            fi
+            text="${text})"
+        fi
+
+        out="${out}${text}"$'\n'
+    done < <(ss::alerts_read_json "$json_path")
+
+    # 超出展示上限时显式提示，避免读者误以为告警已完整
+    if [ "$n" -gt "$NOTIFY_SUMMARY_LINES" ]; then
+        out="${out}... $(ss::msgf MSG_NOTIFY_MORE_ALERTS "$((n - NOTIFY_SUMMARY_LINES))")"$'\n'
+    fi
+
+    printf '%s' "$out"
 }
 
 # ------------------------------------------------------------------------------
@@ -376,7 +444,26 @@ _ss_notify_build_content() {
     if [ "$NOTIFY_MODE" = "full" ] && [ -f "$report_path" ]; then
         body=$(_ss_notify_read_full "$report_path")
     else
-        body=$(_ss_notify_extract_summary "$report_path" "$summary")
+        # 优先使用结构化告警 JSON（与报告同目录同名），
+        # 无 JSON 时回退到 Markdown 解析（尚未接入告警库的脚本仍可用）
+        local alerts_json="${report_path%.md}.json"
+        if [ -f "$alerts_json" ]; then
+            local json_body
+            json_body=$(_ss_notify_alerts_from_json "$alerts_json")
+            if [ -n "$json_body" ]; then
+                body="$(ss::msg MSG_NOTIFY_SECTION_ALERTS)"$'\n'"${json_body}"
+            fi
+            # 脚本传入的摘要（如 security 的检测结论）仍然保留
+            if [ -n "$summary" ]; then
+                if [ -n "$body" ]; then
+                    body="${summary}"$'\n'"${body}"
+                else
+                    body="${summary}"
+                fi
+            fi
+        else
+            body=$(_ss_notify_extract_summary "$report_path" "$summary")
+        fi
     fi
 
     local text

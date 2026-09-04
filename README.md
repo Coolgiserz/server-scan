@@ -32,8 +32,10 @@ server-scan/
 ├── lib/                     # 共享库与语言包
 │   ├── common.sh            # 通用函数（进度、报告、超时、配置加载）
 │   ├── cli.sh               # 统一 CLI 参数解析
+│   ├── alerts.sh            # 结构化告警收集与 JSON 输出
 │   ├── notify.sh            # 通知推送（飞书）
 │   └── i18n/                # 中英文语言包
+├── output/                  # 扫描产物（报告 + 告警 JSON，运行后生成，不入库）
 ├── disk_analyzer.conf.example
 └── notify.conf.example
 ```
@@ -91,7 +93,7 @@ chmod +x server-scan core/*.sh
 
 | 选项 | 说明 |
 |------|------|
-| `-o, --output PATH` | 报告输出路径（覆盖默认路径） |
+| `-o, --output PATH` | 报告输出路径（默认: `output/<脚本>/<脚本>_<时间戳>.md`，可用 `OUTPUT_DIR` 环境变量修改根目录） |
 | `-c, --config FILE` | 指定配置文件（覆盖默认配置文件查找） |
 | `-q, --quiet` | 静默模式（只输出报告路径一行，供 Agent 解析） |
 | `--json` | 在 stdout 输出一行 JSON 元数据（供 Agent 程序化消费） |
@@ -162,19 +164,65 @@ chmod +x server-scan core/*.sh
 
 ## Agent 集成
 
+### 扫描产物
+
+产物默认保存在项目根目录的 `output/` 下，按脚本标识分目录归档，便于查看历史与清理：
+
+```
+output/
+├── sys_overview/
+│   ├── sys_overview_20260904_094218.md     # Markdown 报告（人类阅读）
+│   └── sys_overview_20260904_094218.json   # 结构化告警（机器消费）
+├── disk/
+│   └── disk_20260904_094545.{md,json}
+├── cpu_mem/
+├── network/
+└── security/
+```
+
+- 同一文件名成对出现：`.md` 报告 + `.json` 结构化告警，JSON 路径即把报告后缀 `.md` 换成 `.json`
+- 产物根目录可用 `OUTPUT_DIR` 环境变量覆盖（如 `OUTPUT_DIR=/var/log/server-scan`），也可用 `-o` 完全自定义路径
+- 告警 JSON 与 Markdown 报告同源于一次扫描，避免两份结果不一致
+- 产物目录不纳入版本控制（见 `.gitignore`）
+
+告警 JSON 结构（`schema_version: 1.0`）：
+
+```json
+{
+  "schema_version": "1.0",
+  "script": "sys_overview.sh",
+  "hostname": "server01",
+  "timestamp": "2026-09-04T01:42:21Z",
+  "report_path": "output/sys_overview/sys_overview_20260904_094218.md",
+  "summary": {"total": 2, "critical": 1, "warning": 0, "info": 0},
+  "alerts": [
+    {"level": "critical", "dimension": "磁盘", "metric": "磁盘使用率",
+     "object": "/dev/disk5s1", "value": "97%", "threshold": "90%",
+     "detail": "挂载点 /private/var/run/...", "suggestion": "清理该挂载点或扩容"}
+  ]
+}
+```
+
+字段含义：`level`（critical/warning/info）、`dimension` 维度、`metric` 指标名、`object` 对象
+（如文件系统）、`value` 当前值、`threshold` 阈值、`detail` 补充细节、`suggestion` 建议。
+每个 alert 压缩为单行，notify 用 grep/sed 即可零依赖解析，整体仍是合法 JSON。
+
+通知推送（`--notify`）优先从该 JSON 选择告警项发送——字段语义明确，不再依赖从 Markdown 文本
+中反向解析告警行；对尚未产出 JSON 的脚本会自动回退到 Markdown 提取。
+
 ### 静默模式
 
 ```bash
 # 静默模式：只输出报告路径一行
 ./server-scan overview --quiet
-# 输出: /tmp/sys_overview_20240101_120000.md
+# 输出: output/sys_overview/sys_overview_20240101_120000.md
 
 # JSON 输出：输出结构化元数据
 ./server-scan overview --json
 # 输出:
 # {
 #   "status": "success",
-#   "report_path": "/tmp/sys_overview_20240101_120000.md",
+#   "report_path": "output/sys_overview/sys_overview_20240101_120000.md",
 #   "timestamp": "2024-01-01T12:00:00Z",
 #   "hostname": "server01",
 #   "script": "sys_overview.sh",
@@ -428,7 +476,8 @@ NOTIFY_MODE=full NOTIFY_MSG_TYPE=card ./server-scan overview --notify
 
 ```
 # server-scan:overview
-30 2 * * * PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /path/to/server-scan overview -o "/var/log/server-scan/overview_$(date +\%Y\%m\%d_\%H\%M\%S).md" --notify
+# 报告默认写入产物目录 output/，如需自定义落点可在命令中加 -o <目录>
+30 2 * * * PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /path/to/server-scan overview --notify
 ```
 
 安全设计：

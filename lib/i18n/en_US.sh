@@ -24,6 +24,7 @@ MSG_COMMON_REPORT_FILE="Report File"
 MSG_COMMON_OS="Operating System"
 MSG_COMMON_KERNEL="Kernel Version"
 MSG_COMMON_ANALYSIS_COMPLETE="Analysis Complete"
+MSG_COMMON_OUTPUT_DIR_FAIL="Error: cannot create output directory; report not written: %s"
 MSG_COMMON_TOTAL="Total"
 MSG_COMMON_SECTIONS="sections, progress shown per section"
 

@@ -41,6 +41,34 @@ ss::msgf() {
 }
 
 # ------------------------------------------------------------------------------
+# 产物目录（报告与告警 JSON）
+# ------------------------------------------------------------------------------
+# 默认在项目根目录下的 output/，按脚本标识分目录存放，便于归档与清理。
+# 可用 OUTPUT_DIR 环境变量覆盖（如 /var/log/server-scan）。
+OUTPUT_DIR="${OUTPUT_DIR:-${SCRIPT_DIR:-.}/output}"
+
+# 生成默认产物路径
+# 用法: ss::default_report_path <脚本标识> [扩展名]
+# 示例: sys_overview -> <OUTPUT_DIR>/sys_overview/sys_overview_20260904_092232.md
+ss::default_report_path() {
+    local name="$1"
+    local ext="${2:-md}"
+    printf '%s/%s/%s_%s.%s' \
+        "$OUTPUT_DIR" "$name" "$name" "$(date '+%Y%m%d_%H%M%S')" "$ext"
+}
+
+# 确保目标文件所在目录存在
+# 用法: ss::ensure_output_dir <文件路径>
+ss::ensure_output_dir() {
+    local dir
+    dir="$(dirname "$1")"
+    if [ ! -d "$dir" ]; then
+        mkdir -p "$dir" 2>/dev/null || return 1
+    fi
+    return 0
+}
+
+# ------------------------------------------------------------------------------
 # 操作系统检测
 # ------------------------------------------------------------------------------
 ss::detect_os() {
@@ -159,6 +187,13 @@ ss::report_end() {
 
     # 恢复原始 stdout，然后将临时文件同步输出到终端和报告路径
     exec 1>&3
+
+    # 确保产物目录存在：默认路径为 $OUTPUT_DIR/<脚本>/，首次运行时目录尚不存在。
+    # 若目录创建失败，tee 会静默失败（脚本仍以 0 退出），因此这里必须显式报错
+    if ! ss::ensure_output_dir "$report_path"; then
+        ss::log_error "$(ss::msgf MSG_COMMON_OUTPUT_DIR_FAIL "$report_path")"
+        return 1
+    fi
 
     # 使用 cat + tee 替代异步的进程替换，避免输出交错
     cat "$TMP_REPORT" | tee "$report_path"
@@ -281,3 +316,7 @@ ss::json_escape() {
 # 初始化
 # ------------------------------------------------------------------------------
 ss::detect_os
+
+# 加载结构化告警库（提供 ss::alert_add / ss::alerts_write_json 等）
+# shellcheck source=./alerts.sh
+source "$SCRIPT_DIR/lib/alerts.sh"

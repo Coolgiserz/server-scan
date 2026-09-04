@@ -4,6 +4,9 @@ disk_analyzer.conf
 # 通知配置（含 webhook 与签名密钥，禁止提交）
 notify.conf
 
+# 扫描产物（报告与告警 JSON，位于 OUTPUT_DIR，不提交）
+output/
+
 # 临时文件
 *.tmp
 *.swp

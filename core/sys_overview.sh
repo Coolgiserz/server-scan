@@ -10,7 +10,9 @@
 # ==============================================================================
 
 # --- 配置区 ---
-REPORT_PATH="/tmp/sys_overview_$(date '+%Y%m%d_%H%M%S').md"
+# 留空表示使用默认产物路径（$OUTPUT_DIR/sys_overview/），
+# 可通过 -o 参数或 REPORT_PATH 环境变量覆盖
+REPORT_PATH="${REPORT_PATH:-}"
 
 # 获取项目根目录（脚本位于 core/ 子目录，根目录为其上一级）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,11 +40,21 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# 未通过 -o 指定时，使用默认产物路径（$OUTPUT_DIR/sys_overview/）
+if [ -z "$REPORT_PATH" ]; then
+    REPORT_PATH="$(ss::default_report_path sys_overview)"
+fi
+
 # 结论汇总用：把各维度瓶颈写进数组，末尾生成「瓶颈清单」
 declare -a BOTTLENECKS=()
 add_bottleneck() {
     # $1=级别(red/yellow) $2=维度 $3=结论
     BOTTLENECKS+=("$1|$2|$3")
+
+    # 同步写入结构化告警，作为 JSON 输出的唯一事实来源
+    local level="warning"
+    [ "$1" = "red" ] && level="critical"
+    ss::alert_add "$level" "$2" "$2" "-" "-" "-" "$3" ""
 }
 
 # 报告开始
@@ -446,6 +458,9 @@ echo "> 📄 **$(ss::msg MSG_COMMON_REPORT_SAVED):** \`$REPORT_PATH\`"
 
 # 报告结束
 ss::report_end "$REPORT_PATH"
+
+# 输出结构化告警 JSON（与报告同目录同名，供 notify 与 Agent 消费）
+ss::alerts_write_json "${REPORT_PATH%.md}.json" "sys_overview.sh" "$REPORT_PATH"
 
 # JSON 输出
 if [ "$JSON_OUTPUT" = "true" ]; then

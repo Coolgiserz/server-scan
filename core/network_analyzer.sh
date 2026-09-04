@@ -13,7 +13,9 @@
 # ==============================================================================
 
 # --- 配置区 ---
-REPORT_PATH="/tmp/network_report_$(date '+%Y%m%d_%H%M%S').md"
+# 留空表示使用默认产物路径（$OUTPUT_DIR/network/），
+# 可通过 -o 参数或 REPORT_PATH 环境变量覆盖
+REPORT_PATH="${REPORT_PATH:-}"
 
 # 连通性探测目标（可覆盖: PING_TARGETS="8.8.8.8 1.1.1.1" ./network_analyzer.sh）
 PING_TARGETS="${PING_TARGETS:-8.8.8.8 1.1.1.1}"
@@ -67,6 +69,11 @@ $(ss::msg MSG_NET_HELP_DNS_TARGETS)"
         ;;
     esac
 done
+
+# 未通过 -o 指定时，使用默认产物路径（$OUTPUT_DIR/network/）
+if [ -z "$REPORT_PATH" ]; then
+    REPORT_PATH="$(ss::default_report_path network)"
+fi
 
 # 报告开始
 ss::report_begin "$(ss::msg MSG_NET_REPORT_BEGIN)" 8

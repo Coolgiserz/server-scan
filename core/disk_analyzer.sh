@@ -30,9 +30,9 @@
 # ==============================================================================
 
 # --- 配置区 ---
-# 报告输出路径，可自定义为 /var/log/disk_report.md 等
-# 文件名自动附带时间戳，避免多次执行覆盖历史报告
-REPORT_PATH="/tmp/disk_report_$(date '+%Y%m%d_%H%M%S').md"
+# 报告输出路径。留空表示使用默认产物路径（$OUTPUT_DIR/disk/），
+# 可通过 -o 参数或 REPORT_PATH 环境变量覆盖
+REPORT_PATH="${REPORT_PATH:-}"
 
 # 大文件扫描超时（秒），防止从根目录扫描耗时过长
 LARGE_FILE_SCAN_TIMEOUT=30
@@ -304,9 +304,14 @@ if [ "$DIR_SCAN_MODE" = "true" ]; then
 
     SCAN_DIRS=("${valid_dirs[@]}")
 
-    # 更新报告文件名，包含目录标识
+    # 更新报告文件名，包含目录标识（仍落在 disk 产物目录下）
     dir_tag=$(echo "${SCAN_DIRS[0]}" | sed 's|^/||; s|/|_|g' | cut -c1-20)
-    REPORT_PATH="/tmp/disk_report_${dir_tag}_$(date '+%Y%m%d_%H%M%S').md"
+    REPORT_PATH="${OUTPUT_DIR}/disk/disk_${dir_tag}_$(date '+%Y%m%d_%H%M%S').md"
+fi
+
+# 未通过 -o 指定时，使用默认产物路径（$OUTPUT_DIR/disk/）
+if [ -z "$REPORT_PATH" ]; then
+    REPORT_PATH="$(ss::default_report_path disk)"
 fi
 
 # ==============================================================================
@@ -650,32 +655,47 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     if [ "$OS_TYPE" = "Darwin" ]; then
         # macOS df -h 格式: Filesystem Size Used Avail Capacity iused ifree %iused Mounted on
         # 第1列=FS, 第2列=Size, 第3列=Used, 第4列=Avail, 第5列=Capacity, 第9列=Mounted on
-        df -h 2>/dev/null | grep -E '^/dev/' | while read -r fs size used avail capacity iused ifree ipct mount; do
+        # 使用进程替换而非管道：保证 while 在当前 shell 中执行，
+        # 使循环内收集的告警能写入上层数组（管道子 shell 会导致赋值丢失）
+        while read -r fs size used avail capacity iused ifree ipct mount; do
             use_num=$(echo "$capacity" | sed 's/%//')
             if [ "$use_num" -ge "$DISK_USAGE_CRITICAL_THRESHOLD" ]; then
                 status="$(ss::msg MSG_STATUS_DANGER)"
+                ss::alert_add "critical" "磁盘" "磁盘使用率" "$fs" "$capacity" \
+                    "${DISK_USAGE_CRITICAL_THRESHOLD}%" "挂载点 ${mount}（已用 ${used} / 共 ${size}）" \
+                    "清理该挂载点或扩容"
             elif [ "$use_num" -ge "$DISK_USAGE_WARNING_THRESHOLD" ]; then
                 status="$(ss::msg MSG_STATUS_WARNING)"
+                ss::alert_add "warning" "磁盘" "磁盘使用率" "$fs" "$capacity" \
+                    "${DISK_USAGE_WARNING_THRESHOLD}%" "挂载点 ${mount}（已用 ${used} / 共 ${size}）" \
+                    "关注增长趋势，适时清理"
             else
                 status="$(ss::msg MSG_STATUS_HEALTHY)"
             fi
             # 用 mount 命令补全文件系统类型（macOS 格式：$4 = (apfs,）
             fstype=$(mount | awk -v dev="$fs" -v mnt="$mount" '$1==dev && $3==mnt {gsub(/^\(/,"",$4); gsub(/,$/,"",$4); print $4}')
             printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" "$fs" "${fstype:--}" "$size" "$used" "$avail" "$capacity" "$mount" "$status"
-        done
+        done < <(df -h 2>/dev/null | grep -E '^/dev/')
     else
         # Linux df -hT 格式: FS Type Size Used Avail Use% Mounted on
-        df -hT 2>/dev/null | grep -E '^/dev/' | while read -r fs type size used avail use mount; do
+        # 同上使用进程替换，保证告警收集在当前 shell 中生效
+        while read -r fs type size used avail use mount; do
             use_num=$(echo "$use" | sed 's/%//')
             if [ "$use_num" -ge "$DISK_USAGE_CRITICAL_THRESHOLD" ]; then
                 status="$(ss::msg MSG_STATUS_DANGER)"
+                ss::alert_add "critical" "磁盘" "磁盘使用率" "$fs" "$use" \
+                    "${DISK_USAGE_CRITICAL_THRESHOLD}%" "挂载点 ${mount}（已用 ${used} / 共 ${size}，类型 ${type}）" \
+                    "清理该挂载点或扩容"
             elif [ "$use_num" -ge "$DISK_USAGE_WARNING_THRESHOLD" ]; then
                 status="$(ss::msg MSG_STATUS_WARNING)"
+                ss::alert_add "warning" "磁盘" "磁盘使用率" "$fs" "$use" \
+                    "${DISK_USAGE_WARNING_THRESHOLD}%" "挂载点 ${mount}（已用 ${used} / 共 ${size}，类型 ${type}）" \
+                    "关注增长趋势，适时清理"
             else
                 status="$(ss::msg MSG_STATUS_HEALTHY)"
             fi
             printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" "$fs" "$type" "$size" "$used" "$avail" "$use" "$mount" "$status"
-        done
+        done < <(df -hT 2>/dev/null | grep -E '^/dev/')
     fi
     echo ""
 
@@ -1483,6 +1503,9 @@ fi
 # 报告尾部结束
 # ==============================================================================
 ss::report_end "$REPORT_PATH"
+
+# 输出结构化告警 JSON（与报告同目录同名，供 notify 与 Agent 消费）
+ss::alerts_write_json "${REPORT_PATH%.md}.json" "disk_analyzer.sh" "$REPORT_PATH"
 
 # JSON 输出（供 Agent 程序化消费）
 if [ "$JSON_OUTPUT" = "true" ]; then

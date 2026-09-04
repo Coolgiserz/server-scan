@@ -270,7 +270,8 @@ _ss_cron_add() {
     # --- 3. 输出目录与附加参数 ---
     echo ""
     local out_dir
-    out_dir=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_OUTPUT)" "/var/log/server-scan")
+    # 默认落在该任务的产物子目录（与交互执行的 output/<脚本>/ 保持一致）
+    out_dir=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_OUTPUT)" "${OUTPUT_DIR}/${sub}")
 
     # 立即尝试创建输出目录；权限不足时提示（不阻断，cron 侧还有 mkdir 兜底）
     if [ ! -d "$out_dir" ]; then

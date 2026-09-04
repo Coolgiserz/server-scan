@@ -11,7 +11,9 @@
 # ==============================================================================
 
 # --- 配置区 ---
-REPORT_PATH="/tmp/cpu_mem_report_$(date '+%Y%m%d_%H%M%S').md"
+# 留空表示使用默认产物路径（$OUTPUT_DIR/cpu_mem/），
+# 可通过 -o 参数或 REPORT_PATH 环境变量覆盖
+REPORT_PATH="${REPORT_PATH:-}"
 ENABLE_MPSTAT="true" # Linux 下有效，macOS 自动忽略
 SAMPLE_INTERVAL=1
 SAMPLE_COUNT=3
@@ -64,6 +66,11 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# 未通过 -o 指定时，使用默认产物路径（$OUTPUT_DIR/cpu_mem/）
+if [ -z "$REPORT_PATH" ]; then
+    REPORT_PATH="$(ss::default_report_path cpu_mem)"
+fi
 
 # ==============================================================================
 # 按系统选择命令 / 工具探测

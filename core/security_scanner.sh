@@ -10,7 +10,9 @@
 # ==============================================================================
 
 # --- 配置区 ---
-REPORT_PATH="/tmp/security_scan_$(date '+%Y%m%d_%H%M%S').md"
+# 留空表示使用默认产物路径（$OUTPUT_DIR/security/），
+# 可通过 -o 参数或 REPORT_PATH 环境变量覆盖
+REPORT_PATH="${REPORT_PATH:-}"
 
 # 获取项目根目录（脚本位于 core/ 子目录，根目录为其上一级）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,6 +39,11 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# 未通过 -o 指定时，使用默认产物路径（$OUTPUT_DIR/security/）
+if [ -z "$REPORT_PATH" ]; then
+    REPORT_PATH="$(ss::default_report_path security)"
+fi
 
 # ==============================================================================
 # 已知杀毒/安全防护软件特征库（只读检测，不做任何删除/停止操作）
