@@ -167,14 +167,45 @@ _ss_notify_extract_summary() {
     fi
 
     if [ -f "$report_path" ]; then
-        local alerts
-        # keep_first=1: 这些是从报告中筛出的零散数据行，首行不是表头
-        alerts=$(grep -E '🔴|🟡' "$report_path" 2>/dev/null |
-            sed 's/^[[:space:]]*//' |
-            grep -v '^$' |
-            sort -u |
-            head -n "$NOTIFY_SUMMARY_LINES" |
-            _ss_notify_format_tables 1)
+        local alerts=""
+        local level part total_alerts
+        # 按严重性分级提取（🔴 优先于 🟡）：
+        # 原先的 sort -u 按字典序排序，会打乱严重性顺序，
+        # 使读者看到的第一条未必是最严重的问题
+        total_alerts=$(grep -cE '🔴|🟡' "$report_path" 2>/dev/null)
+        for level in '🔴' '🟡'; do
+            # 同时输出所属章节标题与表头：
+            # 章节提供语义上下文，表头提供列名（用于给数值加标签）
+            part=$(awk -v icon="$level" -v limit="$NOTIFY_SUMMARY_LINES" '
+            BEGIN { new_tbl = 1 }
+            /^#{2,4} / { sec = $0; new_tbl = 1; next }
+            /^\|/ {
+                t = $0
+                gsub(/[|: -]/, "", t)
+                if (t == "") next
+                # 新表格的首行为表头，先暂存
+                if (new_tbl) { new_tbl = 0; pHdr = $0; pSec = sec; next }
+                if (index($0, icon) == 0) next
+                n++
+                if (n > limit) next
+                # 仅当该表格确有告警时才输出章节与表头
+                # 章节改为加粗文本：卡片中 ## 会渲染成过大的标题
+                if (pSec != "" && pSec != lSec) {
+                    sc = pSec
+                    gsub(/^#+ /, "", sc)
+                    print "**" sc "**"
+                    lSec = pSec
+                }
+                if (pHdr != lHdr) { print pHdr; lHdr = pHdr }
+                print $0
+            }
+            ' "$report_path" 2>/dev/null | _ss_notify_format_tables)
+            [ -n "$part" ] && alerts="${alerts}${part}"$'\n'
+        done
+        # 超限必须显式提示，避免读者误以为告警已展示完整
+        if [ -n "$total_alerts" ] && [ "$total_alerts" -gt "$NOTIFY_SUMMARY_LINES" ] 2>/dev/null; then
+            alerts="${alerts}"$'\n'"... $(ss::msgf MSG_NOTIFY_MORE_ALERTS "$((total_alerts - NOTIFY_SUMMARY_LINES))")"
+        fi
         if [ -n "$alerts" ]; then
             if [ -n "$out" ]; then
                 out="${out}"$'\n'"$(ss::msg MSG_NOTIFY_SECTION_ALERTS)"$'\n'"${alerts}"
@@ -220,18 +251,39 @@ _ss_notify_format_tables() {
         ;;
     kv | *)
         awk -v keep_first="$keep_first" '
-        BEGIN { in_tbl = 0; icons = "🔴🟡🟢⚪✅❌⚠️ℹ️" }
+        # 判断列值是否为状态列。状态有两种写法: "🔴" 或 "🔴 危险"，
+        # 因此要判断列值是否"包含"图标，而非列值是否为图标的子串
+        function has_icon(v) {
+            if (index(v, "🔴") > 0) return 1
+            if (index(v, "🟡") > 0) return 1
+            if (index(v, "🟢") > 0) return 1
+            if (index(v, "⚪") > 0) return 1
+            if (index(v, "✅") > 0) return 1
+            if (index(v, "❌") > 0) return 1
+            if (index(v, "⚠") > 0) return 1
+            if (index(v, "ℹ") > 0) return 1
+            return 0
+        }
+        BEGIN { in_tbl = 0; hdr_n = 0 }
         {
             if ($0 ~ /^\|/) {
                 # 分隔行 (|---|:---:|) 去掉 | - : 后为空
                 tmp = $0
                 gsub(/[|: -]/, "", tmp)
                 if (tmp == "") next
-                # 表格首行为表头，其列名与数据行语义重复，丢弃
-                # keep_first=1 时首行即数据（已提取的零散行），不丢弃
+                # 表格首行为表头：暂存为列名，供多列数值表为数据加标签
                 if (!in_tbl) {
                     in_tbl = 1
-                    if (!keep_first) next
+                    if (!keep_first) {
+                        hs = $0
+                        sub(/^\|/, "", hs)
+                        sub(/\|$/, "", hs)
+                        hdr_n = split(hs, hdr, "|")
+                        for (j = 1; j <= hdr_n; j++) {
+                            gsub(/^ +| +$/, "", hdr[j])
+                        }
+                        next
+                    }
                 }
 
                 s = $0
@@ -239,30 +291,43 @@ _ss_notify_format_tables() {
                 sub(/\|$/, "", s)
                 n = split(s, cols, "|")
 
-                # 收集非空的列
+                # 收集非空的列，并用 colidx 记录原始列号以对齐表头
                 cnt = 0
                 for (i = 1; i <= n; i++) {
                     gsub(/^ +| +$/, "", cols[i])
                     if (cols[i] == "" || cols[i] == "-") continue
                     vals[++cnt] = cols[i]
+                    colidx[cnt] = i
                 }
                 if (cnt == 0) next
 
-                # 首列若为状态图标，则作为前缀，key 顺延到第二列
+                # 状态标记可能在首列（sys_overview 瓶颈表）也可能在末列（df 表）。
+                # 必须前置且不参与截断，否则告警会丢失严重等级
                 prefix = ""
                 k = 1
-                if (cnt > 1 && index(icons, vals[1]) > 0) {
+                last = cnt
+                if (cnt > 1 && has_icon(vals[1])) {
                     prefix = vals[1] " "
                     k = 2
+                } else if (cnt > 1 && has_icon(vals[cnt])) {
+                    prefix = vals[cnt] " "
+                    last = cnt - 1
                 }
 
                 key = vals[k]
                 vs = ""
-                for (i = k + 1; i <= cnt; i++) {
-                    vs = (vs == "") ? vals[i] : vs "   " vals[i]
+                for (i = k + 1; i <= last; i++) {
+                    piece = vals[i]
+                    # 表头可用时标注列名，避免无标签的数字串
+                    if (hdr_n > 0 && colidx[i] <= hdr_n && hdr[colidx[i]] != "") {
+                        piece = hdr[colidx[i]] "=" piece
+                    }
+                    vs = (vs == "") ? piece : vs "  " piece
                 }
-                # 超长值（如深层文件路径）会撑宽卡片，做截断
-                if (length(vs) > 100) vs = substr(vs, 1, 97) "..."
+                # 中间截断并显式标注：尾部通常是文件名/挂载点，是定位问题的关键
+                if (length(vs) > 100) {
+                    vs = substr(vs, 1, 60) " …(截断)… " substr(vs, length(vs) - 35)
+                }
                 if (vs != "") print prefix "**" key "**: " vs
                 else print prefix "**" key "**"
                 next
