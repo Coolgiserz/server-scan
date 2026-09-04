@@ -257,8 +257,10 @@ if command -v bc &>/dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] &&
     threshold_danger=$(echo "$CORES * 2.0" | bc -l)
     if (($(echo "$load1 > $threshold_danger" | bc -l))); then
         load_eval="$(ss::msg MSG_STATUS_DANGER)"
+        ss::alert_add "critical" "CPU" "系统负载" "load1=${load1}" "${load1}" "${threshold_danger}(核数×2)" "1分钟负载超过危险阈值" "排查高负载进程(top/ps)"
     elif (($(echo "$load1 > $threshold_busy" | bc -l))); then
         load_eval="$(ss::msg MSG_STATUS_BUSY)"
+        ss::alert_add "warning" "CPU" "系统负载" "load1=${load1}" "${load1}" "${threshold_busy}(核数×1)" "1分钟负载偏高" "关注负载趋势"
     else
         load_eval="$(ss::msg MSG_STATUS_HEALTHY)"
     fi
@@ -292,10 +294,26 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     echo ""
 else
     wa_num=$(echo "$wa" | awk '{printf "%d", $1}')
-    if [ "$wa_num" -gt 20 ]; then wa_status="$(ss::msg MSG_STATUS_BOTTLENECK)"; elif [ "$wa_num" -gt 10 ]; then wa_status="$(ss::msg MSG_STATUS_HIGH)"; else wa_status="$(ss::msg MSG_STATUS_NORMAL)"; fi
+    if [ "$wa_num" -gt 20 ]; then
+        wa_status="$(ss::msg MSG_STATUS_BOTTLENECK)"
+        ss::alert_add "critical" "CPU" "IO等待" "wa=${wa}%" "${wa}%" "20%" "IO等待偏高，存在IO瓶颈" "排查磁盘IO或增加IO能力"
+    elif [ "$wa_num" -gt 10 ]; then
+        wa_status="$(ss::msg MSG_STATUS_HIGH)"
+        ss::alert_add "warning" "CPU" "IO等待" "wa=${wa}%" "${wa}%" "10%" "IO等待略高" "关注磁盘IO"
+    else
+        wa_status="$(ss::msg MSG_STATUS_NORMAL)"
+    fi
 
     sy_num=$(echo "$sy" | awk '{printf "%d", $1}')
-    if [ "$sy_num" -gt 20 ]; then sy_status="$(ss::msg MSG_STATUS_ABNORMAL)"; elif [ "$sy_num" -gt 10 ]; then sy_status="$(ss::msg MSG_STATUS_HIGH)"; else sy_status="$(ss::msg MSG_STATUS_NORMAL)"; fi
+    if [ "$sy_num" -gt 20 ]; then
+        sy_status="$(ss::msg MSG_STATUS_ABNORMAL)"
+        ss::alert_add "critical" "CPU" "系统态占用" "sy=${sy}%" "${sy}%" "20%" "内核态占用过高" "排查内核/中断开销"
+    elif [ "$sy_num" -gt 10 ]; then
+        sy_status="$(ss::msg MSG_STATUS_HIGH)"
+        ss::alert_add "warning" "CPU" "系统态占用" "sy=${sy}%" "${sy}%" "10%" "内核态占用偏高" "关注系统调用开销"
+    else
+        sy_status="$(ss::msg MSG_STATUS_NORMAL)"
+    fi
 
     echo "| us (用户态) | ${us}% | 应用程序消耗 | - |"
     echo "| sy (系统态) | ${sy}% | 内核消耗 | $sy_status |"
@@ -404,6 +422,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     avail_num=$(echo "$avail_pct" | awk '{printf "%d", $1}')
     if [ "$avail_num" -lt 10 ]; then
         mem_status="$(ss::msg MSG_STATUS_INSUFFICIENT)"
+        ss::alert_add "critical" "内存" "可用内存占比" "available=${avail_pct}%" "${avail_pct}%" "10%" "可用内存不足，存在OOM风险" "释放内存或扩容"
     else
         mem_status="$(ss::msg MSG_STATUS_SUFFICIENT)"
     fi
@@ -445,8 +464,10 @@ else
     avail_num=$(echo "$avail_pct" | awk '{printf "%d", $1}')
     if [ "$avail_num" -lt 5 ]; then
         mem_status="$(ss::msg MSG_STATUS_INSUFFICIENT)"
+        ss::alert_add "critical" "内存" "可用内存占比" "available=${avail_pct}%" "${avail_pct}%" "5%" "可用内存严重不足，存在OOM风险" "立即释放内存或扩容"
     elif [ "$avail_num" -lt 10 ]; then
         mem_status="$(ss::msg MSG_STATUS_TENSE)"
+        ss::alert_add "warning" "内存" "可用内存占比" "available=${avail_pct}%" "${avail_pct}%" "10%" "可用内存偏紧" "关注内存使用趋势"
     else
         mem_status="$(ss::msg MSG_STATUS_SUFFICIENT)"
     fi
@@ -485,6 +506,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
             swap_status="$(ss::msg MSG_CPU_MEM_SWAP_UNUSED)"
         else
             swap_status="$(ss::msg MSG_CPU_MEM_SWAP_USED_MAC)"
+            ss::alert_add "warning" "内存" "Swap使用" "macOS swap" "-" "-" "已使用Swap，存在内存压力" "检查内存是否充足"
         fi
 
         echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_TABLE_STATUS) |"
@@ -511,6 +533,7 @@ else
         swap_pct=$(awk "BEGIN {printf \"%.2f\", $swap_used/$swap_total*100}")
         if [ "$swap_used" -gt 0 ]; then
             swap_status="$(ss::msgf MSG_CPU_MEM_SWAP_USED "${swap_pct}")"
+            ss::alert_add "warning" "内存" "Swap使用" "used=${swap_used}KB/${swap_total}KB" "${swap_pct}%" "-" "已使用Swap，存在内存压力" "检查内存是否充足"
         else
             swap_status="$(ss::msg MSG_CPU_MEM_SWAP_UNUSED)"
         fi
@@ -675,6 +698,7 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     # macOS 僵尸进程
     z_count=$(ps ax -o stat= 2>/dev/null | grep -c '^Z')
     if [ "$z_count" -gt 0 ]; then
+        ss::alert_add "critical" "进程" "僵尸进程" "数量=${z_count}" "${z_count}" "0" "存在僵尸进程，父进程可能异常" "检查并重启其父进程"
         echo "### $(ss::msg MSG_CPU_MEM_ZOMBIE_DETAIL)"
         echo ""
         echo "| PID | PPID | 用户 | 命令 |"
@@ -710,6 +734,7 @@ else
     # D 状态进程
     d_count=$(ps aux 2>/dev/null | awk 'NR>1 && substr($8,1,1)=="D" {count++} END {print count+0}')
     if [ "$d_count" -gt 0 ]; then
+        ss::alert_add "warning" "进程" "D状态进程" "数量=${d_count}" "${d_count}" "0" "存在不可中断睡眠进程(通常等待IO)" "排查缓慢的磁盘/网络IO"
         echo "### $(ss::msg MSG_CPU_MEM_D_DETAIL)"
         echo ""
         echo "| PID | 用户 | CPU% | MEM% | 命令 |"
@@ -721,6 +746,7 @@ else
     # Z 状态进程
     z_count=$(ps aux 2>/dev/null | awk 'NR>1 && substr($8,1,1)=="Z" {count++} END {print count+0}')
     if [ "$z_count" -gt 0 ]; then
+        ss::alert_add "critical" "进程" "僵尸进程" "数量=${z_count}" "${z_count}" "0" "存在僵尸进程，父进程可能异常" "检查并重启其父进程"
         echo "### $(ss::msg MSG_CPU_MEM_ZOMBIE_DETAIL)"
         echo ""
         echo "| PID | PPID | 用户 | 命令 |"
@@ -845,8 +871,10 @@ if [ "$OS_TYPE" = "Darwin" ]; then
         pct_int=${file_pct%.*}
         if [ "$pct_int" -gt 90 ]; then
             file_status="$(ss::msg MSG_STATUS_DANGER)"
+            ss::alert_add "critical" "句柄" "文件句柄使用率" "used=${KERN_FILES}/${KERN_MAXFILES}" "${file_pct}%" "90%" "文件句柄即将耗尽" "排查句柄泄漏"
         elif [ "$pct_int" -gt 80 ]; then
             file_status="$(ss::msg MSG_STATUS_HIGH)"
+            ss::alert_add "warning" "句柄" "文件句柄使用率" "used=${KERN_FILES}/${KERN_MAXFILES}" "${file_pct}%" "80%" "文件句柄使用偏高" "关注句柄趋势"
         else
             file_status="$(ss::msg MSG_STATUS_NORMAL)"
         fi
@@ -875,8 +903,10 @@ else
         file_pct=$(awk "BEGIN {printf \"%.2f\", $file_allocated/$file_max*100}")
         if [ "${file_pct%.*}" -gt 80 ]; then
             file_status="$(ss::msg MSG_STATUS_HIGH)"
+            ss::alert_add "warning" "句柄" "文件句柄使用率" "used=${file_allocated}/${file_max}" "${file_pct}%" "80%" "文件句柄使用偏高" "关注句柄趋势"
         elif [ "${file_pct%.*}" -gt 90 ]; then
             file_status="$(ss::msg MSG_STATUS_DANGER)"
+            ss::alert_add "critical" "句柄" "文件句柄使用率" "used=${file_allocated}/${file_max}" "${file_pct}%" "90%" "文件句柄即将耗尽" "排查句柄泄漏"
         else
             file_status="$(ss::msg MSG_STATUS_NORMAL)"
         fi
@@ -1010,6 +1040,9 @@ echo "> 📄 **$(ss::msg MSG_COMMON_REPORT_SAVED):** \`$REPORT_PATH\`"
 
 # 报告结束
 ss::report_end "$REPORT_PATH"
+
+# 输出结构化告警 JSON（与报告同目录同名，供 notify 与 Agent 消费）
+ss::alerts_write_json "${REPORT_PATH%.md}.json" "cpu_mem_analyzer.sh" "$REPORT_PATH"
 
 # JSON 输出
 if [ "$JSON_OUTPUT" = "true" ]; then

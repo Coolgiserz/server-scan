@@ -159,6 +159,7 @@ if [ -n "$gw" ]; then
     echo "> **$(ss::msg MSG_NET_LABEL_DEFAULT_GW):** \`$gw\`"
 else
     echo "> $(ss::msg MSG_NET_WARN_NO_GW)"
+    ss::alert_add "warning" "网络" "默认网关" "default gateway" "-" "-" "未发现默认网关，可能影响外网连通" "检查路由配置"
 fi
 echo ""
 
@@ -183,6 +184,7 @@ for target in $PING_TARGETS; do
 
     if [ -z "$result" ]; then
         printf "| %s | $(ss::msg MSG_NET_STATUS_UNREACHABLE) | - | - | - | - |\n" "$target"
+        ss::alert_add "critical" "网络" "连通性" "$target" "不可达" "-" "目标不可达，可能存在网络中断" "检查网络链路与目标可用性"
         continue
     fi
 
@@ -207,8 +209,10 @@ for target in $PING_TARGETS; do
     loss_num=$(echo "$loss" | sed 's/%//')
     if [ -n "$loss_num" ] && [ "$(echo "$loss_num > 20" | bc 2>/dev/null || echo 0)" = "1" ]; then
         reach="$(ss::msg MSG_NET_STATUS_SEVERE_LOSS)"
+        ss::alert_add "critical" "网络" "丢包率" "$target" "${loss}" "20%" "丢包严重，网络质量差" "排查链路质量"
     elif [ -n "$loss_num" ] && [ "$(echo "$loss_num > 0" | bc 2>/dev/null || echo 0)" = "1" ]; then
         reach="$(ss::msg MSG_NET_STATUS_MINOR_LOSS)"
+        ss::alert_add "warning" "网络" "丢包率" "$target" "${loss}" "0%" "存在丢包" "关注丢包趋势"
     else
         reach="$(ss::msg MSG_NET_STATUS_NORMAL)"
     fi
@@ -285,9 +289,11 @@ conn_note="$(ss::msg MSG_NET_CONN_NOTE_NORMAL)"
 if [ "$close_wait" -gt 100 ]; then
     conn_status="$(ss::msg MSG_NET_STATUS_ABNORMAL)"
     conn_note="$(ss::msgf MSG_NET_CONN_NOTE_CLOSE_WAIT "$close_wait")"
+    ss::alert_add "critical" "网络" "CLOSE_WAIT连接数" "close_wait=${close_wait}" "${close_wait}" "100" "CLOSE_WAIT过高，可能存在连接泄漏" "排查未正确关闭的连接"
 elif [ "$time_wait" -gt 10000 ]; then
     conn_status="$(ss::msg MSG_NET_STATUS_HIGH)"
     conn_note="$(ss::msgf MSG_NET_CONN_NOTE_TIME_WAIT "$time_wait")"
+    ss::alert_add "warning" "网络" "TIME_WAIT连接数" "time_wait=${time_wait}" "${time_wait}" "10000" "TIME_WAIT过高" "关注连接复用与回收"
 fi
 
 echo "| $(ss::msg MSG_NET_CONN_HDR) |"
@@ -352,6 +358,7 @@ for domain in $DNS_TARGETS; do
         printf "| %s | %s | %s | $(ss::msg MSG_NET_DNS_RESOLVED) |\n" "$domain" "$resolved" "$cost"
     else
         printf "| %s | $(ss::msg MSG_NET_DNS_FAILED) | %s | $(ss::msg MSG_NET_DNS_FAIL_STATUS) |\n" "$domain" "$cost"
+        ss::alert_add "warning" "网络" "DNS解析" "$domain" "失败" "-" "DNS解析失败，可能影响域名访问" "检查DNS配置与解析服务"
     fi
 done
 echo ""
@@ -454,6 +461,9 @@ echo "> $(ss::msg MSG_NET_REPORT_SAVED) \`$REPORT_PATH\`"
 
 # 报告结束
 ss::report_end "$REPORT_PATH"
+
+# 输出结构化告警 JSON（与报告同目录同名，供 notify 与 Agent 消费）
+ss::alerts_write_json "${REPORT_PATH%.md}.json" "network_analyzer.sh" "$REPORT_PATH"
 
 # JSON 输出
 if [ "$JSON_OUTPUT" = "true" ]; then

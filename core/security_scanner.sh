@@ -114,6 +114,11 @@ else
     fi
 fi
 
+# 当前用户无法查看全部进程时，扫描结果可能不完整（告警库等级=warning）
+if [ "$CAN_SEE_ALL_PROCS" = "false" ]; then
+    ss::alert_add "warning" "安全" "扫描可见性" "进程可见性" "受限" "-" "当前用户无法查看所有进程，杀毒软件检测可能不完整" "使用 root 权限重新运行以获得完整检测"
+fi
+
 # 报告开始（3 个章节：检测方法说明并入报告头，实际章节: 结果汇总/详情/结论）
 ss::report_begin "$(ss::msg MSG_SECURITY_REPORT_TITLE)" 3
 
@@ -358,6 +363,9 @@ echo "> 📄 **$(ss::msg MSG_COMMON_REPORT_SAVED):** \`$REPORT_PATH\`"
 
 # 报告结束
 ss::report_end "$REPORT_PATH"
+
+# 输出结构化告警 JSON（与报告同目录同名，供 notify 与 Agent 消费）
+ss::alerts_write_json "${REPORT_PATH%.md}.json" "security_scanner.sh" "$REPORT_PATH"
 
 # JSON 输出
 if [ "$JSON_OUTPUT" = "true" ]; then

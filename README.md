@@ -207,8 +207,8 @@ output/
 （如文件系统）、`value` 当前值、`threshold` 阈值、`detail` 补充细节、`suggestion` 建议。
 每个 alert 压缩为单行，notify 用 grep/sed 即可零依赖解析，整体仍是合法 JSON。
 
-通知推送（`--notify`）优先从该 JSON 选择告警项发送——字段语义明确，不再依赖从 Markdown 文本
-中反向解析告警行；对尚未产出 JSON 的脚本会自动回退到 Markdown 提取。
+通知推送（`--notify`）直接读取该 JSON 的 `alerts` 字段构造推送正文——字段语义明确，
+不依赖从 Markdown 文本反向解析告警行。五个分析脚本现已全部产出结构化告警 JSON。
 
 ### 静默模式
 

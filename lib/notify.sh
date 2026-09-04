@@ -223,72 +223,9 @@ _ss_notify_alerts_from_json() {
 }
 
 # ------------------------------------------------------------------------------
-# 提取摘要: 优先使用脚本传入的 summary，再附加报告中的告警行
+# （已移除）原先的 _ss_notify_extract_summary：从 Markdown 文本反向解析告警行。
+# 现在五个分析脚本均产出结构化告警 JSON，notify 直接读取 JSON，无需文本解析。
 # ------------------------------------------------------------------------------
-_ss_notify_extract_summary() {
-    local report_path="$1"
-    local summary="$2"
-    local out=""
-
-    if [ -n "$summary" ]; then
-        out="$summary"
-    fi
-
-    if [ -f "$report_path" ]; then
-        local alerts=""
-        local level part total_alerts
-        # 按严重性分级提取（🔴 优先于 🟡）：
-        # 原先的 sort -u 按字典序排序，会打乱严重性顺序，
-        # 使读者看到的第一条未必是最严重的问题
-        total_alerts=$(grep -cE '🔴|🟡' "$report_path" 2>/dev/null)
-        for level in '🔴' '🟡'; do
-            # 同时输出所属章节标题与表头：
-            # 章节提供语义上下文，表头提供列名（用于给数值加标签）
-            part=$(awk -v icon="$level" -v limit="$NOTIFY_SUMMARY_LINES" '
-            BEGIN { new_tbl = 1 }
-            /^#{2,4} / { sec = $0; new_tbl = 1; next }
-            /^\|/ {
-                t = $0
-                gsub(/[|: -]/, "", t)
-                if (t == "") next
-                # 新表格的首行为表头，先暂存
-                if (new_tbl) { new_tbl = 0; pHdr = $0; pSec = sec; next }
-                if (index($0, icon) == 0) next
-                n++
-                if (n > limit) next
-                # 仅当该表格确有告警时才输出章节与表头
-                # 章节改为加粗文本：卡片中 ## 会渲染成过大的标题
-                if (pSec != "" && pSec != lSec) {
-                    sc = pSec
-                    gsub(/^#+ /, "", sc)
-                    print "**" sc "**"
-                    lSec = pSec
-                }
-                if (pHdr != lHdr) { print pHdr; lHdr = pHdr }
-                print $0
-            }
-            ' "$report_path" 2>/dev/null | _ss_notify_format_tables)
-            [ -n "$part" ] && alerts="${alerts}${part}"$'\n'
-        done
-        # 超限必须显式提示，避免读者误以为告警已展示完整
-        if [ -n "$total_alerts" ] && [ "$total_alerts" -gt "$NOTIFY_SUMMARY_LINES" ] 2>/dev/null; then
-            alerts="${alerts}"$'\n'"... $(ss::msgf MSG_NOTIFY_MORE_ALERTS "$((total_alerts - NOTIFY_SUMMARY_LINES))")"
-        fi
-        if [ -n "$alerts" ]; then
-            if [ -n "$out" ]; then
-                out="${out}"$'\n'"$(ss::msg MSG_NOTIFY_SECTION_ALERTS)"$'\n'"${alerts}"
-            else
-                out="$(ss::msg MSG_NOTIFY_SECTION_ALERTS)"$'\n'"${alerts}"
-            fi
-        fi
-    fi
-
-    if [ -z "$out" ]; then
-        out="$(ss::msg MSG_NOTIFY_NO_ALERT)"
-    fi
-
-    printf '%s' "$out"
-}
 
 # ------------------------------------------------------------------------------
 # Markdown 表格格式化
@@ -462,7 +399,9 @@ _ss_notify_build_content() {
                 fi
             fi
         else
-            body=$(_ss_notify_extract_summary "$report_path" "$summary")
+            # 兼容旧产物（无结构化告警 JSON）：退化为仅展示脚本传入的摘要，
+            # 不再从 Markdown 文本反向解析告警行
+            body="$summary"
         fi
     fi
 
