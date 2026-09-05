@@ -656,13 +656,13 @@ MSG_SECURITY_CONCLUSION_NONE_INCOMPLETE="⚠️ 权限不足，检测结果可�
 MSG_SECURITY_JSON_PERM_WARN="权限不足，进程信号检测可能不完整"
 
 # === 通知推送 (Notify) ===
-MSG_NOTIFY_NO_WEBHOOK="通知未发送: 未配置 webhook，请在配置文件中设置 NOTIFY_WEBHOOK"
-MSG_NOTIFY_NO_CURL="通知未发送: 未找到 curl 命令，请先安装 curl"
-MSG_NOTIFY_UNSUPPORTED_CHANNEL="通知未发送: 不支持的渠道 '%s'（当前仅支持 feishu）"
-MSG_NOTIFY_SIGN_FAIL="通知未发送: 签名计算失败，请检查 openssl 是否可用"
+MSG_NOTIFY_NO_WEBHOOK="通知已启用但未配置 webhook，本次跳过推送（不影响扫描结果）。请补充配置: 在 notify.conf 中设置 NOTIFY_WEBHOOK，或用 --webhook 指定；若不需要推送，可设 NOTIFY_ENABLED=false 或加 --no-notify"
+MSG_NOTIFY_NO_CURL="通知已启用但未找到 curl 命令，本次跳过推送（不影响扫描结果）。请先安装 curl，或加 --no-notify 关闭推送"
+MSG_NOTIFY_UNSUPPORTED_CHANNEL="通知渠道 '%s' 不支持，本次跳过推送（不影响扫描结果）。当前仅支持 feishu"
+MSG_NOTIFY_SIGN_FAIL="通知签名计算失败，本次跳过推送（不影响扫描结果）。请检查 openssl 是否可用"
 MSG_NOTIFY_SENDING="正在推送扫描结果到 %s ..."
 MSG_NOTIFY_SUCCESS="通知推送成功"
-MSG_NOTIFY_FAIL="通知推送失败: %s"
+MSG_NOTIFY_FAIL="通知推送失败: %s（不影响扫描结果，报告已正常生成）"
 MSG_NOTIFY_SKIP_NO_ALERT="未检测到告警项，已跳过推送（NOTIFY_ON_ALERT_ONLY=true）"
 MSG_NOTIFY_HEADER_TITLE="📊 %s"
 MSG_NOTIFY_HEADER_HOST="🖥️ 主机: %s"
@@ -683,7 +683,8 @@ MSG_NOTIFY_TEST_TITLE_SHORT="server-scan 通知测试"
 MSG_NOTIFY_TEST_BODY="✅ 如果你收到这条消息，说明通知渠道配置正确。"
 
 # === 帮助文案: 通知参数 ===
-MSG_HELP_NOTIFY="启用通知推送（将扫描结果发送到配置的 Channel）"
+MSG_HELP_NOTIFY="启用通知推送（默认即为启用，将扫描结果发送到配置的 Channel）"
+MSG_HELP_NO_NOTIFY="关闭本次运行的通知推送（通知默认启用）"
 MSG_HELP_NOTIFY_CHANNEL="指定通知渠道（默认 feishu，支持飞书自定义机器人）"
 MSG_HELP_WEBHOOK="指定 webhook 地址（覆盖配置文件；会暴露在进程列表中，建议仅调试用）"
 MSG_HELP_NOTIFY_TEST="发送一条测试消息验证通知配置是否正确"

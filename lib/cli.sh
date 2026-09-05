@@ -21,6 +21,7 @@ REPORT_PATH="${REPORT_PATH:-}"
 
 # 命令行传入的通知参数（优先级高于配置文件，由 ss::notify_init 消费）
 SS_CLI_NOTIFY_ENABLED="${SS_CLI_NOTIFY_ENABLED:-false}"
+SS_CLI_NOTIFY_DISABLED="${SS_CLI_NOTIFY_DISABLED:-false}"
 SS_CLI_NOTIFY_CHANNEL="${SS_CLI_NOTIFY_CHANNEL:-}"
 SS_CLI_WEBHOOK="${SS_CLI_WEBHOOK:-}"
 SS_CLI_NOTIFY_TEST="${SS_CLI_NOTIFY_TEST:-false}"
@@ -71,6 +72,12 @@ ss::parse_common_args() {
         --notify)
             NOTIFY_ENABLED="true"
             SS_CLI_NOTIFY_ENABLED="true"
+            i=$((i + 1))
+            ;;
+        --no-notify)
+            # 通知默认启用，此参数用于单次运行显式关闭
+            NOTIFY_ENABLED="false"
+            SS_CLI_NOTIFY_DISABLED="true"
             i=$((i + 1))
             ;;
         --notify-channel)
@@ -164,6 +171,7 @@ $(ss::msg MSG_HELP_COMMON_OPTIONS):
       --no-color        $(ss::msg MSG_HELP_NO_COLOR)
       --lang LANG       $(ss::msg MSG_HELP_LANG)
       --notify          $(ss::msg MSG_HELP_NOTIFY)
+      --no-notify       $(ss::msg MSG_HELP_NO_NOTIFY)
       --notify-channel NAME
                         $(ss::msg MSG_HELP_NOTIFY_CHANNEL)
       --webhook URL     $(ss::msg MSG_HELP_WEBHOOK)

@@ -102,7 +102,8 @@ chmod +x server-scan core/*.sh
 | `--json` | 在 stdout 输出一行 JSON 元数据（供 Agent 程序化消费） |
 | `--no-color` | 禁用 ANSI 颜色（Agent 调用时必需） |
 | `--lang LANG` | 指定输出语言（zh_CN / en_US，默认跟随系统 LANG） |
-| `--notify` | 启用通知推送（将扫描结果发送到配置的 Channel） |
+| `--notify` | 启用通知推送（默认已启用，此参数用于显式声明） |
+| `--no-notify` | 关闭本次运行的通知推送 |
 | `--notify-channel NAME` | 指定通知渠道（默认: feishu） |
 | `--webhook URL` | 指定 webhook 地址（覆盖配置文件） |
 | `--notify-test` | 发送一条测试消息，验证通知配置是否正确 |
@@ -224,8 +225,8 @@ output/
 （如文件系统）、`value` 当前值、`threshold` 阈值、`detail` 补充细节、`suggestion` 建议。
 每个 alert 压缩为单行，notify 用 grep/sed 即可零依赖解析，整体仍是合法 JSON。
 
-通知推送（`--notify`）直接读取该 JSON 的 `alerts` 字段构造推送正文——字段语义明确，
-不依赖从 Markdown 文本反向解析告警行。五个分析脚本现已全部产出结构化告警 JSON。
+通知推送（默认启用，可用 `--no-notify` 关闭）直接读取该 JSON 的 `alerts` 字段构造推送正文——
+字段语义明确，不依赖从 Markdown 文本反向解析告警行。五个分析脚本现已全部产出结构化告警 JSON。
 
 ### 静默模式
 
@@ -389,15 +390,15 @@ chmod 600 notify.conf
 # 4. 验证配置是否正确
 ./server-scan overview --notify-test
 
-# 5. 执行扫描并推送
-./server-scan overview --notify
+# 5. 执行扫描（默认即推送，无需额外参数）
+./server-scan overview
 ```
 
 ### 配置项
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `NOTIFY_ENABLED` | `false` | 是否默认启用推送；为 false 时用 `--notify` 按需启用 |
+| `NOTIFY_ENABLED` | `true` | 是否启用推送（默认启用）；设为 `false` 可全局关闭 |
 | `NOTIFY_CHANNEL` | `feishu` | 通知渠道，当前支持 `feishu` |
 | `NOTIFY_WEBHOOK` | 空 | Webhook 地址（**必填**） |
 | `NOTIFY_SECRET` | 空 | 签名密钥，机器人开启签名校验时填写 |
@@ -410,6 +411,11 @@ chmod 600 notify.conf
 | `NOTIFY_MENTION_IDS` | 空 | @指定用户 open_id，逗号分隔 |
 | `NOTIFY_SUMMARY_LINES` | `20` | 摘要模式提取的告警行上限 |
 | `NOTIFY_TABLE_STYLE` | `kv` | 表格呈现：`kv` 转列表 / `code` 代码块 / `raw` 原样 |
+
+> **默认启用，失败不阻塞**：扫描结束后即推送通知，无需加 `--notify`。
+> 若未配置 `NOTIFY_WEBHOOK`、网络异常或渠道不支持，只会输出一条 `⚠️` 告警并跳过推送，
+> **扫描结果与退出码不受影响**（告警写 stderr，且在 `--json`/`--quiet` 下静默）。
+> 不需要推送时用 `--no-notify`（单次）或 `NOTIFY_ENABLED=false`（全局）关闭。
 
 ### 配置优先级
 
@@ -426,8 +432,11 @@ chmod 600 notify.conf
 ### 使用示例
 
 ```bash
-# 按需单次推送
-./server-scan overview --notify
+# 默认即推送（无需额外参数）
+./server-scan overview
+
+# 单次关闭推送
+./server-scan overview --no-notify
 
 # 临时指定 webhook（调试用；webhook 会出现在进程列表中）
 ./server-scan disk --notify --webhook "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
@@ -494,7 +503,7 @@ NOTIFY_MODE=full NOTIFY_MSG_TYPE=card ./server-scan overview --notify
 ```
 # server-scan:overview
 # 报告默认写入产物目录 output/，如需自定义落点可在命令中加 -o <目录>
-30 2 * * * PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /path/to/server-scan overview --notify
+30 2 * * * PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /path/to/server-scan overview
 ```
 
 安全设计：
@@ -514,7 +523,7 @@ NOTIFY_MODE=full NOTIFY_MSG_TYPE=card ./server-scan overview --notify
 0 * * * * /path/to/server-scan disk -o /var/log/disk_report.md
 
 # 每天凌晨 2 点巡检，仅在发现告警时推送飞书
-0 2 * * * NOTIFY_ON_ALERT_ONLY=true /path/to/server-scan overview --notify
+0 2 * * * NOTIFY_ON_ALERT_ONLY=true /path/to/server-scan overview
 ```
 
 > 手动配置时注意：cron 的 `PATH` 与终端不同，建议使用绝对路径；

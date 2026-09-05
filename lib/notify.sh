@@ -7,8 +7,13 @@
 #
 # 使用方法: source "$SCRIPT_DIR/lib/notify.sh"
 #
+# 默认启用: 扫描默认推送通知，无需显式加 --notify。
+#   推送失败（未配置 webhook、网络异常、渠道不支持等）只输出告警，
+#   不影响扫描结果与主流程退出码。
+# 关闭方式: --no-notify 命令行参数，或 NOTIFY_ENABLED=false（环境变量/配置文件）。
+#
 # 配置优先级（高 -> 低）:
-#   1. 命令行参数    --notify / --notify-channel / --webhook
+#   1. 命令行参数    --no-notify / --notify / --notify-channel / --webhook
 #   2. 环境变量      NOTIFY_ENABLED / NOTIFY_WEBHOOK / ...
 #   3. 配置文件      通过 NOTIFY_CONFIG 指定，或按默认路径查找
 #
@@ -22,7 +27,9 @@
 # ------------------------------------------------------------------------------
 # 默认配置（只在未设置时才初始化，避免覆盖环境变量/命令行传入的值）
 # ------------------------------------------------------------------------------
-NOTIFY_ENABLED="${NOTIFY_ENABLED:-false}"            # 是否启用通知推送
+# 默认启用通知推送（扫描即推送）；未配置 webhook 时只告警不阻断，
+# 依旧可通过 NOTIFY_ENABLED=false 或 --no-notify 关闭
+NOTIFY_ENABLED="${NOTIFY_ENABLED:-true}"             # 是否启用通知推送
 NOTIFY_CHANNEL="${NOTIFY_CHANNEL:-feishu}"           # 通知渠道: feishu
 NOTIFY_WEBHOOK="${NOTIFY_WEBHOOK:-}"                 # Webhook 地址
 NOTIFY_SECRET="${NOTIFY_SECRET:-}"                   # 签名密钥（飞书安全设置，可选）
@@ -50,6 +57,16 @@ _ss_notify_log() {
 }
 
 # ------------------------------------------------------------------------------
+# 通知配置缺失或推送失败的告警（非阻断）
+# 与常规推送日志（📢）以 ⚠️ 区分，让用户一眼识别"需要补充配置"。
+# 同样写 stderr 并尊重 QUIET，因此不污染 stdout 与 --json 输出
+# ------------------------------------------------------------------------------
+_ss_notify_warn() {
+    [ "$QUIET" = "true" ] && return 0
+    printf '⚠️  %s\n' "$1" >&2
+}
+
+# ------------------------------------------------------------------------------
 # Webhook 脱敏（日志中隐藏敏感后缀）
 # ------------------------------------------------------------------------------
 _ss_notify_mask() {
@@ -70,6 +87,7 @@ _ss_notify_mask() {
 ss::notify_init() {
     # 保存命令行传入的值（用于覆盖配置文件）
     local cli_enabled="${SS_CLI_NOTIFY_ENABLED:-}"
+    local cli_disabled="${SS_CLI_NOTIFY_DISABLED:-}"
     local cli_channel="${SS_CLI_NOTIFY_CHANNEL:-}"
     local cli_webhook="${SS_CLI_WEBHOOK:-}"
 
@@ -94,9 +112,14 @@ ss::notify_init() {
     done
 
     # 命令行参数优先级最高
-    [ "$cli_enabled" = "true" ] && NOTIFY_ENABLED="true"
+    # --no-notify 为显式关闭，需能覆盖配置文件中可能存在的 true
     [ -n "$cli_channel" ] && NOTIFY_CHANNEL="$cli_channel"
     [ -n "$cli_webhook" ] && NOTIFY_WEBHOOK="$cli_webhook"
+    if [ "$cli_disabled" = "true" ]; then
+        NOTIFY_ENABLED="false"
+    elif [ "$cli_enabled" = "true" ]; then
+        NOTIFY_ENABLED="true"
+    fi
 
     # 布尔值归一化，容忍 True/TRUE/1/yes
     case "$NOTIFY_ENABLED" in
@@ -427,6 +450,9 @@ _ss_notify_build_content() {
 # 对外主入口: 发送通知
 # 用法: ss::notify_send <标题> <报告路径> [摘要]
 # 未启用时静默返回 0；失败返回 1（不影响脚本主流程的退出码）
+#
+# 默认启用: 配置缺失或推送失败仅输出告警（⚠️），不阻塞扫描，
+# 并在文案中给出补充/关闭配置的具体方式
 # ------------------------------------------------------------------------------
 ss::notify_send() {
     local title="$1"
@@ -438,15 +464,15 @@ ss::notify_send() {
         return 0
     fi
 
-    # 校验 webhook
+    # 校验 webhook（最常见的"待补充配置"场景，提示需给出可操作指引）
     if [ -z "$NOTIFY_WEBHOOK" ]; then
-        _ss_notify_log "$(ss::msg MSG_NOTIFY_NO_WEBHOOK)"
+        _ss_notify_warn "$(ss::msg MSG_NOTIFY_NO_WEBHOOK)"
         return 1
     fi
 
     # 校验 curl
     if ! command -v curl >/dev/null 2>&1; then
-        _ss_notify_log "$(ss::msg MSG_NOTIFY_NO_CURL)"
+        _ss_notify_warn "$(ss::msg MSG_NOTIFY_NO_CURL)"
         return 1
     fi
 
@@ -470,7 +496,7 @@ ss::notify_send() {
         _ss_feishu_send "$title" "$content" || ret=1
         ;;
     *)
-        _ss_notify_log "$(ss::msgf MSG_NOTIFY_UNSUPPORTED_CHANNEL "$NOTIFY_CHANNEL")"
+        _ss_notify_warn "$(ss::msgf MSG_NOTIFY_UNSUPPORTED_CHANNEL "$NOTIFY_CHANNEL")"
         ret=1
         ;;
     esac
@@ -586,7 +612,7 @@ _ss_feishu_send() {
         timestamp=$(date +%s)
         sign=$(_ss_feishu_sign "$timestamp" "$NOTIFY_SECRET")
         if [ -z "$sign" ]; then
-            _ss_notify_log "$(ss::msg MSG_NOTIFY_SIGN_FAIL)"
+            _ss_notify_warn "$(ss::msg MSG_NOTIFY_SIGN_FAIL)"
             return 1
         fi
     fi
@@ -612,7 +638,7 @@ _ss_feishu_send() {
     local curl_ret=$?
 
     if [ "$curl_ret" -ne 0 ]; then
-        _ss_notify_log "$(ss::msgf MSG_NOTIFY_FAIL "$(ss::msg MSG_NOTIFY_ERR_NETWORK)")"
+        _ss_notify_warn "$(ss::msgf MSG_NOTIFY_FAIL "$(ss::msg MSG_NOTIFY_ERR_NETWORK)")"
         return 1
     fi
 
@@ -625,7 +651,7 @@ _ss_feishu_send() {
     local reason
     reason=$(printf '%s' "$response" | tr -d '\n' | cut -c1-200)
     [ -z "$reason" ] && reason="$(ss::msg MSG_NOTIFY_ERR_EMPTY)"
-    _ss_notify_log "$(ss::msgf MSG_NOTIFY_FAIL "$reason")"
+    _ss_notify_warn "$(ss::msgf MSG_NOTIFY_FAIL "$reason")"
     return 1
 }
 

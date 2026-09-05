@@ -656,13 +656,13 @@ MSG_SECURITY_CONCLUSION_NONE_INCOMPLETE="⚠️ Insufficient permissions — res
 MSG_SECURITY_JSON_PERM_WARN="Insufficient permissions — process signal detection may be incomplete"
 
 # === Notify ===
-MSG_NOTIFY_NO_WEBHOOK="Notification skipped: webhook not configured. Please set NOTIFY_WEBHOOK in the config file"
-MSG_NOTIFY_NO_CURL="Notification skipped: curl command not found. Please install curl"
-MSG_NOTIFY_UNSUPPORTED_CHANNEL="Notification skipped: unsupported channel '%s' (currently only feishu is supported)"
-MSG_NOTIFY_SIGN_FAIL="Notification skipped: failed to compute signature. Check whether openssl is available"
+MSG_NOTIFY_NO_WEBHOOK="Notification enabled but webhook not configured; push skipped (scan results unaffected). To configure: set NOTIFY_WEBHOOK in notify.conf, or pass --webhook. To disable: set NOTIFY_ENABLED=false or pass --no-notify"
+MSG_NOTIFY_NO_CURL="Notification enabled but curl not found; push skipped (scan results unaffected). Please install curl, or pass --no-notify"
+MSG_NOTIFY_UNSUPPORTED_CHANNEL="Unsupported notification channel '%s'; push skipped (scan results unaffected). Currently only feishu is supported"
+MSG_NOTIFY_SIGN_FAIL="Failed to compute notification signature; push skipped (scan results unaffected). Check whether openssl is available"
 MSG_NOTIFY_SENDING="Pushing scan results to %s ..."
 MSG_NOTIFY_SUCCESS="Notification delivered successfully"
-MSG_NOTIFY_FAIL="Notification delivery failed: %s"
+MSG_NOTIFY_FAIL="Notification delivery failed: %s (scan results unaffected; the report was generated normally)"
 MSG_NOTIFY_SKIP_NO_ALERT="No alerts detected; push skipped (NOTIFY_ON_ALERT_ONLY=true)"
 MSG_NOTIFY_HEADER_TITLE="📊 %s"
 MSG_NOTIFY_HEADER_HOST="🖥️ Host: %s"
@@ -683,7 +683,8 @@ MSG_NOTIFY_TEST_TITLE_SHORT="server-scan notification test"
 MSG_NOTIFY_TEST_BODY="✅ If you receive this message, your notification channel is configured correctly."
 
 # === Help: notify options ===
-MSG_HELP_NOTIFY="Enable notification push (send scan results to the configured channel)"
+MSG_HELP_NOTIFY="Enable notification push (enabled by default; sends scan results to the configured channel)"
+MSG_HELP_NO_NOTIFY="Disable notification push for this run (enabled by default)"
 MSG_HELP_NOTIFY_CHANNEL="Notification channel (default: feishu, Feishu custom bot)"
 MSG_HELP_WEBHOOK="Webhook URL (overrides config file; visible in the process list, recommended for debugging only)"
 MSG_HELP_NOTIFY_TEST="Send a test message to verify the notification configuration"
