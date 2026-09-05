@@ -14,6 +14,8 @@
 #   分类扫描: ./disk_analyzer.sh --only docker
 #             ./disk_analyzer.sh --only docker,temp
 #   指定目录: ./disk_analyzer.sh -d /path/to/dir [-d /path/to/dir2] [--depth 3] [--top 20]
+#   Docker 数据目录非默认(data-root)时:
+#             ./disk_analyzer.sh --only docker --docker-dir /data/docker
 #
 # 扫描类别 (--only):
 #   usage  空间与 inode（基础信息 / 空间使用 / inode）
@@ -46,8 +48,15 @@ DIR_SCAN_MODE="false" # 是否为指定目录扫描模式
 # 分类扫描模式配置（--only），为空数组表示扫描全部类别
 SCAN_CATEGORIES=()
 
-# Docker 数据目录配置（可通过配置文件覆盖）
+# Docker 数据目录配置（可通过配置文件或命令行覆盖）
+# data-root 非默认（如 /data/docker）时必须指定，
+# 否则会误扫 /var/lib/docker（该目录常作为残留空目录存在，导致大小统计失真）
 DOCKER_DATA_DIR="" # 自定义 Docker 数据目录
+DOCKER_LOG_DIR=""  # 自定义 Docker 容器日志目录（默认: <数据目录>/containers）
+
+# 命令行指定的目录（优先级最高；以下划线开头避免被 ss::load_config 的 DOCKER_ 前缀加载）
+_SS_DOCKER_DATA_DIR_CLI=""
+_SS_DOCKER_LOG_DIR_CLI=""
 
 # 临时文件与缓存扫描配置（可通过配置文件覆盖）
 # 缓存目录在运行时按系统确定：Linux 用 /var/cache，macOS 用 $HOME/Library/Caches
@@ -87,6 +96,7 @@ LOG_SCAN_DIR="/var/log"        # 日志扫描目录
 LOG_FILE_SIZE_THRESHOLD="100M" # 日志文件大小阈值
 
 # Docker 扫描配置
+DOCKER_INFO_TIMEOUT=10           # docker info 探测超时时间（秒，守护进程不可用时避免挂起）
 DOCKER_IMAGE_TOP=15              # Docker 镜像 Top N
 DOCKER_CONTAINER_TOP=10          # Docker 容器 Top N
 DOCKER_VOLUME_TOP=15             # Docker 卷 Top N
@@ -125,10 +135,33 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/cli.sh"
 
 # 加载配置文件
-ss::load_config "$CONFIG_FILE" DISK_ INODE_ IO_ LARGE_FILE_ LOG_ DOCKER_ MOUNT_ SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_ NOTIFY_ TEMP_
+# 前缀集中定义，便于 -c 指定配置后按同一份清单补加载
+_SS_DISK_CFG_PREFIXES=(DISK_ INODE_ IO_ LARGE_FILE_ LOG_ DOCKER_ MOUNT_ SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_ TEMP_)
+ss::load_config "$CONFIG_FILE" "${_SS_DISK_CFG_PREFIXES[@]}" NOTIFY_
+_SS_CONFIG_LOADED="$CONFIG_FILE"
 
 # 解析公共参数（必须在主shell中直接调用，不能用命令替换）
 ss::parse_common_args "$@"
+
+# -c/--config 在 parse_common_args 内才确定，此处补加载一次，
+# 否则 -c 指定的配置会被忽略（仅补加载非通知项：
+# NOTIFY_ 已由 notify_init 在解析后加载，须保持命令行参数优先）
+if [ -n "$CONFIG_FILE" ] && [ "$CONFIG_FILE" != "$_SS_CONFIG_LOADED" ]; then
+    ss::load_config "$CONFIG_FILE" "${_SS_DISK_CFG_PREFIXES[@]}"
+    _SS_CONFIG_LOADED="$CONFIG_FILE"
+fi
+
+# 保存配置文件中的目录值，用于与命令行参数区分优先级
+DOCKER_DATA_DIR_CONF="${DOCKER_DATA_DIR:-}"
+DOCKER_LOG_DIR_CONF="${DOCKER_LOG_DIR:-}"
+
+# 脚本特有选项帮助文本（提取为变量，避免 -h 与参数错误两处重复维护）
+_SS_DISK_OPTIONS_HELP="  -d, --dir DIR        $(ss::msg MSG_DISK_HELP_DIR)
+  --depth N            $(ss::msg MSG_DISK_HELP_DEPTH)
+  --top N              $(ss::msg MSG_DISK_HELP_TOP)
+  --only CAT[,CAT]     $(ss::msg MSG_DISK_HELP_ONLY)
+  --docker-dir DIR     $(ss::msg MSG_DISK_HELP_DOCKER_DIR)
+  --docker-log-dir DIR $(ss::msg MSG_DISK_HELP_DOCKER_LOG_DIR)"
 
 # 脚本特定参数解析（解析 SCRIPT_ARGS 中剩余的参数）
 set -- "${SCRIPT_ARGS[@]}"
@@ -182,19 +215,31 @@ while [[ $# -gt 0 ]]; do
             exit 2
         fi
         ;;
+    --docker-dir)
+        if [[ -n "$2" && "$2" != -* ]]; then
+            _SS_DOCKER_DATA_DIR_CLI="$2"
+            shift 2
+        else
+            ss::log_error "$(ss::msg MSG_DISK_ERR_DOCKER_DIR_ARG)"
+            exit 2
+        fi
+        ;;
+    --docker-log-dir)
+        if [[ -n "$2" && "$2" != -* ]]; then
+            _SS_DOCKER_LOG_DIR_CLI="$2"
+            shift 2
+        else
+            ss::log_error "$(ss::msg MSG_DISK_ERR_DOCKER_LOG_DIR_ARG)"
+            exit 2
+        fi
+        ;;
     -h | --help)
-        ss::print_usage "$(basename "$0")" "$(ss::msg MSG_DISK_HELP_DESC)" "  -d, --dir DIR       $(ss::msg MSG_DISK_HELP_DIR)
-  --depth N           $(ss::msg MSG_DISK_HELP_DEPTH)
-  --top N             $(ss::msg MSG_DISK_HELP_TOP)
-  --only CAT[,CAT]    $(ss::msg MSG_DISK_HELP_ONLY)"
+        ss::print_usage "$(basename "$0")" "$(ss::msg MSG_DISK_HELP_DESC)" "$_SS_DISK_OPTIONS_HELP"
         exit 0
         ;;
     *)
         ss::log_error "$(ss::msgf MSG_ERROR_UNKNOWN_ARG "$1")"
-        ss::print_usage "$(basename "$0")" "$(ss::msg MSG_DISK_HELP_DESC)" "  -d, --dir DIR       $(ss::msg MSG_DISK_HELP_DIR)
-  --depth N           $(ss::msg MSG_DISK_HELP_DEPTH)
-  --top N             $(ss::msg MSG_DISK_HELP_TOP)
-  --only CAT[,CAT]    $(ss::msg MSG_DISK_HELP_ONLY)"
+        ss::print_usage "$(basename "$0")" "$(ss::msg MSG_DISK_HELP_DESC)" "$_SS_DISK_OPTIONS_HELP"
         exit 2
         ;;
     esac
@@ -1048,6 +1093,186 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     fi
 
     # ==============================================================================
+    # Docker 目录解析辅助函数（支持非默认 data-root）
+    # ==============================================================================
+    # 数据目录优先级: --docker-dir > 配置文件 DOCKER_DATA_DIR > docker info > /var/lib/docker
+    #
+    # 原实现把默认路径 /var/lib/docker 排在 docker info 之前，而该默认目录在
+    # data-root 被迁移后常作为残留空目录保留，导致统计到错误的目录（大小失真）。
+    # 这里按"显式指定优先于自动探测"的顺序解析，并在显式路径无效时告警而非静默降级。
+    # 解析结果写入 DOCKER_DATA_DIR，来源写入 DOCKER_DIR_SOURCE。
+    # ==============================================================================
+    _ss_resolve_docker_dir() {
+        DOCKER_DATA_DIR=""
+        DOCKER_DIR_SOURCE=""
+
+        # 1) 命令行参数
+        if [ -n "$_SS_DOCKER_DATA_DIR_CLI" ]; then
+            if [ -d "$_SS_DOCKER_DATA_DIR_CLI" ]; then
+                DOCKER_DATA_DIR="$_SS_DOCKER_DATA_DIR_CLI"
+                DOCKER_DIR_SOURCE="cli"
+                return 0
+            fi
+            ss::log_warn "$(ss::msgf MSG_DISK_WARN_DOCKER_DIR_MISSING "$_SS_DOCKER_DATA_DIR_CLI")"
+        fi
+
+        # 2) 配置文件
+        if [ -n "$DOCKER_DATA_DIR_CONF" ]; then
+            if [ -d "$DOCKER_DATA_DIR_CONF" ]; then
+                DOCKER_DATA_DIR="$DOCKER_DATA_DIR_CONF"
+                DOCKER_DIR_SOURCE="config"
+                return 0
+            fi
+            ss::log_warn "$(ss::msgf MSG_DISK_WARN_DOCKER_DIR_MISSING "$DOCKER_DATA_DIR_CONF")"
+        fi
+
+        # 3) docker info 自动探测
+        if command -v docker &>/dev/null; then
+            local root=""
+            root=$(ss::run_with_timeout "$DOCKER_INFO_TIMEOUT" \
+                docker info --format '{{.DockerRootDir}}' 2>/dev/null)
+            # 旧版 docker 不支持 --format，回退到文本解析
+            if [ -z "$root" ]; then
+                root=$(ss::run_with_timeout "$DOCKER_INFO_TIMEOUT" docker info 2>/dev/null |
+                    grep "Docker Root Dir" | awk -F': ' '{print $2}')
+            fi
+            if [ -n "$root" ] && [ -d "$root" ]; then
+                DOCKER_DATA_DIR="$root"
+                DOCKER_DIR_SOURCE="info"
+                return 0
+            fi
+        fi
+
+        # 4) 默认路径
+        if [ -d "/var/lib/docker" ]; then
+            DOCKER_DATA_DIR="/var/lib/docker"
+            DOCKER_DIR_SOURCE="default"
+            return 0
+        fi
+
+        return 1
+    }
+
+    # 输出指定目录的一级子目录占用表格（原三个分支各自重复实现，此处统一）
+    _ss_docker_subdir_table() {
+        local dir="$1"
+        echo "| $(ss::msg MSG_DISK_COL_SUBDIR_NAME) | $(ss::msg MSG_DISK_COL_SIZE) |"
+        echo "|--------|------|"
+        for sub in "$dir"/*/; do
+            [ -d "$sub" ] || continue
+            local size_kb
+            size_kb=$(du -sk "$sub" 2>/dev/null | awk '{print $1}')
+            printf '%s\t%s\n' "${size_kb:-0}" "$sub"
+        done | sort -rn | while IFS=$'\t' read -r size_kb path; do
+            printf "| %s | %s |\n" "$(basename "$path")" "$(ss::hr_kb "$size_kb")"
+        done
+    }
+
+    # 渲染 10.2 Docker 数据目录总大小
+    _ss_docker_data_dir_section() {
+        echo "### 10.2 $(ss::msg MSG_DISK_DOCKER_DATA_DIR)"
+        echo ""
+
+        if ! _ss_resolve_docker_dir; then
+            echo "> ⚠️ $(ss::msg MSG_DISK_DOCKER_CANNOT_LOCATE)"
+            echo "> **$(ss::msg MSG_DISK_DOCKER_CONFIG_HINT)**"
+            echo ""
+            return 1
+        fi
+
+        # 显式标注目录来源，便于确认自定义配置是否真正生效
+        local src_label=""
+        case "$DOCKER_DIR_SOURCE" in
+        cli) src_label="$(ss::msg MSG_DISK_DOCKER_DIR_SOURCE_CLI)" ;;
+        config) src_label="$(ss::msg MSG_DISK_DOCKER_DIR_SOURCE_CONFIG)" ;;
+        info) src_label="$(ss::msg MSG_DISK_DOCKER_DIR_SOURCE_INFO)" ;;
+        default) src_label="$(ss::msg MSG_DISK_DOCKER_DIR_SOURCE_DEFAULT)" ;;
+        esac
+        if [ -n "$src_label" ]; then
+            echo "> **${src_label}:** \`$DOCKER_DATA_DIR\`"
+            echo ""
+        fi
+
+        local docker_total
+        docker_total=$(du -sh "$DOCKER_DATA_DIR" 2>/dev/null | awk '{print $1}')
+        echo "> **$(ss::msgf MSG_DISK_DOCKER_DATA_DIR_TOTAL "$DOCKER_DATA_DIR"):** ${docker_total:-$(ss::msg MSG_DISK_UNKNOWN)}"
+        echo ""
+        _ss_docker_subdir_table "$DOCKER_DATA_DIR"
+        return 0
+    }
+
+    # 解析容器日志目录
+    # 优先级: --docker-log-dir > 配置文件 DOCKER_LOG_DIR > <数据目录>/containers > /var/lib/docker/containers
+    # 结果写入 DOCKER_LOG_DIR_RESOLVED；显式指定时同时记录来源到 DOCKER_LOG_DIR_SOURCE
+    # 注意: 原实现依赖仅在"默认目录分支"才赋值的 DOCKER_ROOT，
+    # 导致用户指定数据目录后日志扫描被整节跳过。
+    _ss_resolve_docker_log_dir() {
+        DOCKER_LOG_DIR_RESOLVED=""
+        DOCKER_LOG_DIR_SOURCE=""
+        local cand
+        for cand in "$_SS_DOCKER_LOG_DIR_CLI" "$DOCKER_LOG_DIR_CONF"; do
+            [ -n "$cand" ] || continue
+            if [ -d "$cand" ]; then
+                DOCKER_LOG_DIR_RESOLVED="$cand"
+                if [ "$cand" = "$_SS_DOCKER_LOG_DIR_CLI" ]; then
+                    DOCKER_LOG_DIR_SOURCE="cli"
+                else
+                    DOCKER_LOG_DIR_SOURCE="config"
+                fi
+                return 0
+            fi
+            ss::log_warn "$(ss::msgf MSG_DISK_WARN_DOCKER_DIR_MISSING "$cand")"
+        done
+
+        if [ -n "$DOCKER_DATA_DIR" ] && [ -d "$DOCKER_DATA_DIR/containers" ]; then
+            DOCKER_LOG_DIR_RESOLVED="$DOCKER_DATA_DIR/containers"
+        elif [ -d "/var/lib/docker/containers" ]; then
+            DOCKER_LOG_DIR_RESOLVED="/var/lib/docker/containers"
+        fi
+
+        [ -n "$DOCKER_LOG_DIR_RESOLVED" ]
+    }
+
+    # 渲染 10.7 中基于文件系统的日志扫描部分（不依赖 docker 命令）
+    _ss_docker_log_files_section() {
+        if [ -n "$DOCKER_LOG_DIR_SOURCE" ]; then
+            local label=""
+            case "$DOCKER_LOG_DIR_SOURCE" in
+            cli) label="$(ss::msg MSG_DISK_DOCKER_LOG_DIR_SOURCE_CLI)" ;;
+            config) label="$(ss::msg MSG_DISK_DOCKER_LOG_DIR_SOURCE_CONFIG)" ;;
+            esac
+            echo "> **${label}:** \`$DOCKER_LOG_DIR_RESOLVED\`"
+            echo ""
+        fi
+
+        echo "#### $(ss::msgf MSG_DISK_DOCKER_LOG_LARGE "$DOCKER_LOG_SIZE_THRESHOLD")"
+        echo ""
+
+        if [ -z "$DOCKER_LOG_DIR_RESOLVED" ]; then
+            echo "> ⚠️ $(ss::msg MSG_DISK_DOCKER_LOG_CANNOT_LOCATE)"
+            echo ""
+            return 1
+        fi
+
+        echo "| $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_FILE_PATH) |"
+        echo "|------|----------|"
+        find "$DOCKER_LOG_DIR_RESOLVED" -name "*-json.log" -type f -size +"$DOCKER_LOG_SIZE_THRESHOLD" 2>/dev/null | while read -r logfile; do
+            local size
+            size=$(du -h "$logfile" 2>/dev/null | awk '{print $1}')
+            echo "| $size | $logfile |"
+        done
+        echo ""
+
+        local log_total
+        log_total=$(find "$DOCKER_LOG_DIR_RESOLVED" -name "*-json.log" -type f -exec du -ck {} + 2>/dev/null | tail -1 | awk '{print $1}')
+        if [ -n "$log_total" ] && [ "$log_total" -gt 0 ]; then
+            echo "> **$(ss::msg MSG_DISK_DOCKER_LOG_TOTAL):** $(ss::hr_kb "$log_total")"
+            echo ""
+        fi
+        return 0
+    }
+
+    # ==============================================================================
     # 10. Docker 空间占用专项扫描
     # ==============================================================================
     if _ss_cat_enabled "docker"; then
@@ -1055,6 +1280,18 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
     if ! command -v docker &>/dev/null; then
         echo "> ℹ️ $(ss::msg MSG_DISK_DOCKER_NOT_INSTALLED)"
         echo ""
+        # docker 命令不可用时，若已显式指定数据目录，
+        # 仍执行纯文件系统层面的空间与日志扫描（磁盘空间排查的核心诉求）
+        if [ -n "$_SS_DOCKER_DATA_DIR_CLI" ] || [ -n "$DOCKER_DATA_DIR_CONF" ]; then
+            echo "> **$(ss::msg MSG_DISK_DOCKER_NO_CLI_DIR_SCAN)**"
+            echo ""
+            _ss_docker_data_dir_section
+            echo ""
+            echo "### 10.7 $(ss::msg MSG_DISK_DOCKER_LOG_SCAN)"
+            echo ""
+            _ss_resolve_docker_log_dir
+            _ss_docker_log_files_section
+        fi
     else
         # --- 10.1 Docker 总体空间概览 ---
         echo "### 10.1 $(ss::msg MSG_DISK_DOCKER_OVERVIEW)"
@@ -1069,66 +1306,7 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         echo ""
 
         # --- 10.2 Docker 数据目录总大小 ---
-        echo "### 10.2 $(ss::msg MSG_DISK_DOCKER_DATA_DIR)"
-        echo ""
-
-        # 优先级：配置文件 > docker info > 默认路径
-        if [ -n "$DOCKER_DATA_DIR" ] && [ -d "$DOCKER_DATA_DIR" ]; then
-            # 使用配置文件中的自定义目录
-            echo "> **$(ss::msg MSG_DISK_DOCKER_DATA_DIR_CONFIG):** \`$DOCKER_DATA_DIR\`"
-            echo ""
-            docker_total=$(du -sh "$DOCKER_DATA_DIR" 2>/dev/null | awk '{print $1}')
-            echo "> **$(ss::msgf MSG_DISK_DOCKER_DATA_DIR_TOTAL "$DOCKER_DATA_DIR"):** ${docker_total:-$(ss::msg MSG_DISK_UNKNOWN)}"
-            echo ""
-            echo "| $(ss::msg MSG_DISK_COL_SUBDIR_NAME) | $(ss::msg MSG_DISK_COL_SIZE) |"
-            echo "|--------|------|"
-            for sub in "$DOCKER_DATA_DIR"/*/; do
-                [ -d "$sub" ] || continue
-                size_kb=$(du -sk "$sub" 2>/dev/null | awk '{print $1}')
-                echo "${size_kb:-0}	$sub"
-            done | sort -rn | while IFS=$'\t' read -r size_kb path; do
-                dir_name=$(basename "$path")
-                printf "| %s | %s |\n" "$dir_name" "$(ss::hr_kb "$size_kb")"
-            done
-        elif [ -d "/var/lib/docker" ]; then
-            # 使用默认目录
-            DOCKER_DATA_DIR="/var/lib/docker"
-            docker_total=$(du -sh "$DOCKER_DATA_DIR" 2>/dev/null | awk '{print $1}')
-            echo "> **$(ss::msgf MSG_DISK_DOCKER_DATA_DIR_TOTAL "$DOCKER_DATA_DIR"):** ${docker_total:-$(ss::msg MSG_DISK_UNKNOWN)}"
-            echo ""
-            echo "| $(ss::msg MSG_DISK_COL_SUBDIR_NAME) | $(ss::msg MSG_DISK_COL_SIZE) |"
-            echo "|--------|------|"
-            for sub in "$DOCKER_DATA_DIR"/*/; do
-                [ -d "$sub" ] || continue
-                size_kb=$(du -sk "$sub" 2>/dev/null | awk '{print $1}')
-                echo "${size_kb:-0}	$sub"
-            done | sort -rn | while IFS=$'\t' read -r size_kb path; do
-                dir_name=$(basename "$path")
-                printf "| %s | %s |\n" "$dir_name" "$(ss::hr_kb "$size_kb")"
-            done
-        else
-            # 尝试通过 docker info 获取 Docker Root Dir
-            DOCKER_ROOT=$(docker info 2>/dev/null | grep "Docker Root Dir" | awk -F': ' '{print $2}')
-            if [ -n "$DOCKER_ROOT" ] && [ -d "$DOCKER_ROOT" ]; then
-                DOCKER_DATA_DIR="$DOCKER_ROOT"
-                docker_total=$(du -sh "$DOCKER_ROOT" 2>/dev/null | awk '{print $1}')
-                echo "> **$(ss::msgf MSG_DISK_DOCKER_DATA_DIR_TOTAL "$DOCKER_ROOT"):** ${docker_total:-$(ss::msg MSG_DISK_UNKNOWN)}"
-                echo ""
-                echo "| $(ss::msg MSG_DISK_COL_SUBDIR_NAME) | $(ss::msg MSG_DISK_COL_SIZE) |"
-                echo "|--------|------|"
-                for sub in "$DOCKER_ROOT"/*/; do
-                    [ -d "$sub" ] || continue
-                    size_kb=$(du -sk "$sub" 2>/dev/null | awk '{print $1}')
-                    echo "${size_kb:-0}	$sub"
-                done | sort -rn | while IFS=$'\t' read -r size_kb path; do
-                    dir_name=$(basename "$path")
-                    printf "| %s | %s |\n" "$dir_name" "$(ss::hr_kb "$size_kb")"
-                done
-            else
-                echo "> ⚠️ $(ss::msg MSG_DISK_DOCKER_CANNOT_LOCATE)"
-                echo "> **$(ss::msg MSG_DISK_DOCKER_CONFIG_HINT)**"
-            fi
-        fi
+        _ss_docker_data_dir_section
         echo ""
 
         # --- 10.3 镜像详情（按大小降序 Top${DOCKER_IMAGE_TOP}）---
@@ -1237,35 +1415,11 @@ if [ "$SKIP_TO_FOOTER" != "true" ]; then
         echo "> **$(ss::msg MSG_TABLE_DESC):** $(ss::msg MSG_DISK_DOCKER_LOG_DESC)"
         echo ""
 
-        # 扫描 Docker 日志目录下的大文件
-        DOCKER_LOG_DIR=""
-        if [ -d "/var/lib/docker/containers" ]; then
-            DOCKER_LOG_DIR="/var/lib/docker/containers"
-        elif [ -n "$DOCKER_ROOT" ] && [ -d "$DOCKER_ROOT/containers" ]; then
-            DOCKER_LOG_DIR="$DOCKER_ROOT/containers"
-        fi
-
-        if [ -n "$DOCKER_LOG_DIR" ]; then
-            echo "#### $(ss::msgf MSG_DISK_DOCKER_LOG_LARGE "$DOCKER_LOG_SIZE_THRESHOLD")"
-            echo ""
-            echo "| $(ss::msg MSG_DISK_COL_SIZE) | $(ss::msg MSG_DISK_COL_FILE_PATH) |"
-            echo "|------|----------|"
-            find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -size +"$DOCKER_LOG_SIZE_THRESHOLD" 2>/dev/null | while read -r logfile; do
-                size=$(du -h "$logfile" 2>/dev/null | awk '{print $1}')
-                echo "| $size | $logfile |"
-            done
-            echo ""
-
-            # 日志总大小
-            log_total=$(find "$DOCKER_LOG_DIR" -name "*-json.log" -type f -exec du -ck {} + 2>/dev/null | tail -1 | awk '{print $1}')
-            if [ -n "$log_total" ] && [ "$log_total" -gt 0 ]; then
-                echo "> **$(ss::msg MSG_DISK_DOCKER_LOG_TOTAL):** $(ss::hr_kb "$log_total")"
-                echo ""
-            fi
-        else
-            echo "> ⚠️ $(ss::msg MSG_DISK_DOCKER_LOG_CANNOT_LOCATE)"
-            echo ""
-        fi
+        # 日志目录由已解析的数据目录派生，并支持 --docker-log-dir / DOCKER_LOG_DIR 独立指定。
+        # 原实现仅检查 /var/lib/docker/containers 与默认分支才赋值的 DOCKER_ROOT，
+        # 导致指定自定义数据目录后整节日志扫描被跳过。
+        _ss_resolve_docker_log_dir
+        _ss_docker_log_files_section
 
         # 列出当前运行容器的日志大小 Top${DOCKER_CONTAINER_LOG_TOP}
         echo "#### $(ss::msgf MSG_DISK_DOCKER_LOG_RUNNING "$DOCKER_CONTAINER_LOG_TOP")"
@@ -1555,7 +1709,9 @@ exit 0
 #      - LOG_SCAN_DIR: 日志扫描目录（默认: /var/log）
 #      - LOG_FILE_SIZE_THRESHOLD: 日志文件大小阈值（默认: 100M）
 #    Docker 扫描配置:
-#      - DOCKER_DATA_DIR: 自定义 Docker 数据目录路径
+#      - DOCKER_DATA_DIR: 自定义 Docker 数据目录路径（data-root 非默认时必填，如 /data/docker）
+#      - DOCKER_LOG_DIR: 自定义容器日志目录（默认: <DOCKER_DATA_DIR>/containers）
+#      - DOCKER_INFO_TIMEOUT: docker info 探测超时秒数（默认: 10）
 #      - DOCKER_IMAGE_TOP: Docker 镜像 Top N（默认: 15）
 #      - DOCKER_CONTAINER_TOP: Docker 容器 Top N（默认: 10）
 #      - DOCKER_VOLUME_TOP: Docker 卷 Top N（默认: 15）

@@ -52,7 +52,15 @@ LOG_FILE_SIZE_THRESHOLD="100M"       # 日志文件大小阈值
 # ------------------------------------------------------------------------------
 # Docker 扫描配置
 # ------------------------------------------------------------------------------
-DOCKER_DATA_DIR=""                   # 自定义 Docker 数据目录
+# DOCKER_DATA_DIR: Docker 数据目录。当 docker 的 data-root 被改为非默认路径
+#   （如 /data/docker，常见于数据盘独立挂载）时必须在此指定，否则会误扫
+#   /var/lib/docker（该目录迁移后常作为残留空目录保留，导致统计大小失真）。
+#   也可用命令行 --docker-dir 指定，命令行优先级高于此处配置。
+# DOCKER_LOG_DIR: 容器日志目录，默认取 <DOCKER_DATA_DIR>/containers，
+#   仅当日志目录与数据目录分离时才需要单独指定（命令行 --docker-log-dir）。
+DOCKER_DATA_DIR=""                   # 自定义 Docker 数据目录（data-root 非默认时必填）
+DOCKER_LOG_DIR=""                    # 自定义容器日志目录（留空表示跟随数据目录）
+DOCKER_INFO_TIMEOUT=10               # docker info 探测超时（秒）
 DOCKER_IMAGE_TOP=15                  # Docker 镜像 Top N
 DOCKER_CONTAINER_TOP=10              # Docker 容器 Top N
 DOCKER_VOLUME_TOP=15                 # Docker 卷 Top N

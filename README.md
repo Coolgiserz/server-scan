@@ -70,6 +70,9 @@ chmod +x server-scan core/*.sh
 ./server-scan disk --only docker,temp
 ./server-scan disk --only usage
 
+# Docker 数据目录非默认时（如 data-root 迁到 /data/docker），指定目录扫描
+./server-scan disk --only docker --docker-dir /data/docker
+
 # 扫描杀毒软件 / 主机安全防护
 ./server-scan security
 
@@ -114,6 +117,8 @@ chmod +x server-scan core/*.sh
 | `--depth N` | 子目录扫描深度（默认: 3） |
 | `--top N` | 显示 Top N 结果（默认: 20） |
 | `--only CAT[,CAT]` | 只扫描指定类别（默认 `all`），详见下方分类扫描 |
+| `--docker-dir DIR` | 指定 Docker 数据目录（data-root 非默认时使用，优先级最高） |
+| `--docker-log-dir DIR` | 指定 Docker 容器日志目录（默认: `<数据目录>/containers`） |
 
 **core/network_analyzer.sh:**
 | 选项 | 说明 |
@@ -155,6 +160,18 @@ chmod +x server-scan core/*.sh
 # 只看空间与 inode（最快速的健康检查）
 ./server-scan disk --only usage
 ```
+
+`docker` 类别依赖 Docker 数据目录，解析优先级为：
+
+`--docker-dir` 命令行参数 > 配置文件 `DOCKER_DATA_DIR` > `docker info` 探测 > 默认 `/var/lib/docker`
+
+当 docker 的 `data-root` 被改为非默认路径（常见于数据盘独立挂载，如 `/data/docker`）时，
+**必须显式指定**，否则会误扫 `/var/lib/docker` —— 该目录在迁移后常作为残留空目录保留，
+会使空间统计严重失真。指定的路径无效时会输出告警并回退自动探测，不会静默出错。
+
+容器日志目录默认取 `<数据目录>/containers`；若日志与数据目录分离，可用 `--docker-log-dir`
+或配置文件 `DOCKER_LOG_DIR` 单独指定。即便 docker 命令不可用，只要显式指定了数据目录，
+仍会执行目录级空间与日志扫描。
 
 `temp` 类别会扫描 `/tmp`、`/var/tmp` 以及系统缓存目录（Linux: `/var/cache`、`~/.cache`；macOS: `~/Library/Caches`），
 输出各目录占用、大文件 Top N、长期未访问的清理候选与可清理空间合计。
