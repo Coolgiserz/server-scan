@@ -123,33 +123,23 @@ REPORT_IO_AWAIT_WARNING=20    # 报告建议中的 I/O await 警告阈值（ms�
 REPORT_IO_UTIL_WARNING=100    # 报告建议中的 I/O %util 警告阈值（%）
 
 # ==============================================================================
-# 配置文件加载
+# 配置文件加载（统一配置文件 server-scan.conf，与 cpu_mem 等脚本共用一份）
 # ==============================================================================
-# 默认配置文件路径（项目根目录下的 disk_analyzer.conf）
 # 脚本位于 core/ 子目录，项目根目录为其上一级
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/disk_analyzer.conf}"
 
 # 加载共享库
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/cli.sh"
 
-# 加载配置文件
-# 前缀集中定义，便于 -c 指定配置后按同一份清单补加载
-_SS_DISK_CFG_PREFIXES=(DISK_ INODE_ IO_ LARGE_FILE_ LOG_ DOCKER_ MOUNT_ SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_ TEMP_)
-ss::load_config "$CONFIG_FILE" "${_SS_DISK_CFG_PREFIXES[@]}" NOTIFY_
-_SS_CONFIG_LOADED="$CONFIG_FILE"
+# 加载统一配置文件（前缀决定本脚本取用哪些键）
+ss::config_init DISK_ INODE_ IO_ LARGE_FILE_ LOG_ DOCKER_ MOUNT_ SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_ TEMP_
 
 # 解析公共参数（必须在主shell中直接调用，不能用命令替换）
 ss::parse_common_args "$@"
 
-# -c/--config 在 parse_common_args 内才确定，此处补加载一次，
-# 否则 -c 指定的配置会被忽略（仅补加载非通知项：
-# NOTIFY_ 已由 notify_init 在解析后加载，须保持命令行参数优先）
-if [ -n "$CONFIG_FILE" ] && [ "$CONFIG_FILE" != "$_SS_CONFIG_LOADED" ]; then
-    ss::load_config "$CONFIG_FILE" "${_SS_DISK_CFG_PREFIXES[@]}"
-    _SS_CONFIG_LOADED="$CONFIG_FILE"
-fi
+# 使 -c/--config 指定的配置文件生效
+ss::config_reload
 
 # 保存配置文件中的目录值，用于与命令行参数区分优先级
 DOCKER_DATA_DIR_CONF="${DOCKER_DATA_DIR:-}"

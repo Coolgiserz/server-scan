@@ -36,8 +36,8 @@ server-scan/
 │   ├── notify.sh            # 通知推送（飞书）
 │   └── i18n/                # 中英文语言包
 ├── output/                  # 扫描产物（报告 + 告警 JSON，运行后生成，不入库）
-├── disk_analyzer.conf.example
-└── notify.conf.example
+├── server-scan.conf.example # 统一配置示例（所有扫描脚本共用一份）
+└── notify.conf.example      # 通知配置示例（含密钥，需 chmod 600）
 ```
 
 > 分析脚本统一收拢在 `core/`，根目录只保留 `server-scan` 作为全局入口。
@@ -349,27 +349,40 @@ brew install coreutils smartmontools
 
 ### 配置文件配置
 
-在当前目录创建配置文件（如 `disk_analyzer.conf`），可自定义各项阈值：
+**所有扫描脚本共用一份配置文件** `server-scan.conf`，按变量名前缀各取所需，
+不需要为每个脚本各建一个配置文件：
 
 ```bash
-# 磁盘使用率阈值
-DISK_USAGE_WARNING_THRESHOLD=80
-DISK_USAGE_CRITICAL_THRESHOLD=90
-
-# I/O 性能阈值
-IO_AWAIT_EXCELLENT_THRESHOLD=10
-IO_AWAIT_GOOD_THRESHOLD=20
-IO_AWAIT_SLOW_THRESHOLD=50
-
-# Docker 扫描配置
-DOCKER_DATA_DIR=""                   # 自定义 Docker 数据目录
-DOCKER_IMAGE_TOP=15
-DOCKER_CONTAINER_TOP=10
+cp server-scan.conf.example server-scan.conf
 ```
 
-完整示例配置文件请参考 `disk_analyzer.conf.example`。
+```bash
+# ---- 磁盘专项（disk_analyzer.sh）----
+DISK_USAGE_WARNING_THRESHOLD=80      # 磁盘使用率警告阈值
+DISK_USAGE_CRITICAL_THRESHOLD=90     # 磁盘使用率危险阈值
+IO_AWAIT_EXCELLENT_THRESHOLD=10      # I/O await 优秀阈值（ms）
+DOCKER_DATA_DIR=""                   # 自定义 Docker 数据目录
+DOCKER_IMAGE_TOP=15
 
-通知推送相关配置见下方 [通知推送 (Channel)](#通知推送-channel)，示例文件为 `notify.conf.example`。
+# ---- CPU 与内存专项（cpu_mem_analyzer.sh）----
+SAMPLE_INTERVAL=1                    # 采样间隔（秒）
+SWAP_USAGE_WARNING_THRESHOLD=50      # Swap 使用率告警阈值（%）
+ZOMBIE_CRITICAL_THRESHOLD=50         # 僵尸进程 critical 阈值（个）
+D_STATE_WARNING_THRESHOLD=5          # D 状态进程告警阈值（个）
+```
+
+完整示例见 `server-scan.conf.example`。
+
+**配置文件查找顺序**（找到即用，优先级从高到低）：
+
+1. 命令行 `-c/--config` 指定
+2. 环境变量 `CONFIG_FILE`
+3. `$SCRIPT_DIR/server-scan.conf`
+4. `$SCRIPT_DIR/disk_analyzer.conf`（旧版兼容，新文件不存在时才回退）
+
+> 通知推送配置**独立**为 `notify.conf`：其中含 webhook 与签名密钥，
+> 需单独设置 `chmod 600`，不与普通配置项混用。详见下方
+> [通知推送 (Channel)](#通知推送-channel)，示例文件为 `notify.conf.example`。
 
 ## 通知推送 (Channel)
 

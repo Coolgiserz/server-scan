@@ -272,6 +272,60 @@ ss::load_config() {
 }
 
 # ------------------------------------------------------------------------------
+# 统一配置文件加载（所有扫描脚本共用一份 server-scan.conf）
+# ------------------------------------------------------------------------------
+# 设计: 每个脚本各自维护一份 conf 会产生多个配置文件、难以维护，
+# 因此统一为单一入口 server-scan.conf。各脚本按「前缀」取用自己关心的键，
+# 同一份文件即可同时服务 disk / cpu_mem 等脚本，互不干扰。
+#
+# 例外: 通知配置（含 webhook 与签名密钥）因安全原因独立为 notify.conf，
+# 避免把密钥混进需要 chmod 644 的普通配置文件。
+#
+# 用法（顺序不可颠倒）:
+#   ss::config_init DISK_ INODE_ ...   # ss::parse_common_args 之前调用
+#   ss::parse_common_args "$@"
+#   ss::config_reload                  # 之后调用，使 -c/--config 生效
+# ------------------------------------------------------------------------------
+SS_CONFIG_PREFIXES=()
+SS_CONFIG_LOADED=""
+
+# 解析配置文件路径: 环境变量/脚本已指定 > server-scan.conf > 旧版 disk_analyzer.conf
+ss::config_path() {
+    if [ -n "${CONFIG_FILE:-}" ]; then
+        printf '%s' "$CONFIG_FILE"
+        return 0
+    fi
+    if [ -f "$SCRIPT_DIR/server-scan.conf" ]; then
+        printf '%s' "$SCRIPT_DIR/server-scan.conf"
+        return 0
+    fi
+    # 兼容既有部署：旧的 disk_analyzer.conf 仍可继续生效
+    if [ -f "$SCRIPT_DIR/disk_analyzer.conf" ]; then
+        printf '%s' "$SCRIPT_DIR/disk_analyzer.conf"
+        return 0
+    fi
+    printf '%s' "$SCRIPT_DIR/server-scan.conf"
+}
+
+# 初始加载（在解析命令行参数之前）
+ss::config_init() {
+    SS_CONFIG_PREFIXES=("$@")
+    CONFIG_FILE="$(ss::config_path)"
+    ss::load_config "$CONFIG_FILE" "${SS_CONFIG_PREFIXES[@]}" NOTIFY_
+    SS_CONFIG_LOADED="$CONFIG_FILE"
+}
+
+# 补加载（在 ss::parse_common_args 之后）
+# -c/--config 在解析过程中才确定，需重新加载一次否则会被忽略。
+# 排除 NOTIFY_: 通知配置由 notify_init 在解析后加载，须保持命令行参数优先
+ss::config_reload() {
+    if [ -n "${CONFIG_FILE:-}" ] && [ "$CONFIG_FILE" != "$SS_CONFIG_LOADED" ]; then
+        ss::load_config "$CONFIG_FILE" "${SS_CONFIG_PREFIXES[@]}"
+        SS_CONFIG_LOADED="$CONFIG_FILE"
+    fi
+}
+
+# ------------------------------------------------------------------------------
 # 日志输出
 # ------------------------------------------------------------------------------
 ss::log_info() {

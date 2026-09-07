@@ -30,8 +30,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/cli.sh"
 
+# 加载统一配置文件 server-scan.conf（与 disk_analyzer 共用同一份，
+# 按前缀取用 CPU/内存相关键；上方配置区已给出默认值，此处仅做覆盖）
+ss::config_init CPU_MEM_ SAMPLE_ ENABLE_ SWAP_ ZOMBIE_ D_STATE_
+
 # 解析公共参数（必须在主shell中直接调用，不能用命令替换）
 ss::parse_common_args "$@"
+
+# 使 -c/--config 指定的配置文件生效
+ss::config_reload
 
 # 脚本特定参数解析（解析 SCRIPT_ARGS 中剩余的参数）
 set -- "${SCRIPT_ARGS[@]}"
