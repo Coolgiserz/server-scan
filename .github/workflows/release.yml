@@ -45,15 +45,32 @@ jobs:
 
       - name: Create release archive
         run: |
-          # 打包所有脚本和库文件
+          # 1) 核心文件必须存在，缺失时尽早失败并明确指出缺什么
+          MISSING=""
+          for f in server-scan README.md core lib; do
+            [ -e "$f" ] || MISSING="$MISSING $f"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::发布必需文件缺失:$MISSING"
+            exit 1
+          fi
+
+          # 2) 示例配置用通配符收集：新增或重命名示例文件时无需同步修改此处，
+          #    避免再次出现「文件名变了导致打包失败」
+          shopt -s nullglob
+          CONF_EXAMPLES=(*.conf.example)
+          echo "将打包的示例配置: ${CONF_EXAMPLES[*]:-(无)}"
+          ls -la "${CONF_EXAMPLES[@]}" 2>/dev/null || echo "(无示例配置文件)"
+
+          # 3) --ignore-failed-read 作为兜底：可选的附加文件缺失时不应中断发版
           tar czf server-scan-${{ steps.version.outputs.version }}.tar.gz \
             --transform 's,^,server-scan/,' \
+            --ignore-failed-read \
             server-scan \
             core/ \
             lib/ \
             README.md \
-            disk_analyzer.conf.example \
-            notify.conf.example
+            "${CONF_EXAMPLES[@]}"
 
       - name: Generate release notes
         id: notes
