@@ -224,6 +224,15 @@ ss::progress() {
 # ------------------------------------------------------------------------------
 # 配置加载
 # ------------------------------------------------------------------------------
+# 解析规则（注释处理是重点，注释只作说明、绝不参与取值）:
+#   1. 整行注释（首个非空白字符为 #）整行跳过
+#   2. 取值采用「引号感知」: 值若以引号开头，则取到配对的闭合引号为止，
+#      引号内的 # 属于值本身（如 "p@ss#word"、"/data/#tmp"）；
+#      闭合引号之后的内容必须是空或注释
+#   3. 未加引号的值沿用 shell 语义: 只有「空白之后的 #」才视为注释起点，
+#      因此 abc#def 中的 # 会被保留
+#   4. 必须先正确取值再谈校验: 否则 "30   # 大文件 Top N" 会被整个当成值，
+#      导致数值阈值比较失效、路径尾部引号残留、甚至因注释含 $ ( ) ; 而被整条丢弃
 ss::load_config() {
     local config_file="$1"
     shift
@@ -231,18 +240,49 @@ ss::load_config() {
 
     # 如果配置文件存在，则加载
     if [ -f "$config_file" ]; then
-        # 加载配置文件，只加载以特定前缀开头的变量
-        while IFS='=' read -r key value; do
-            # 跳过注释和空行
-            [[ "$key" =~ ^#.*$ ]] && continue
-            [[ -z "$key" ]] && continue
+        local line key value raw tail
+        # || [ -n "$line" ] 用于处理末尾无换行的文件
+        while IFS= read -r line || [ -n "$line" ]; do
+            # 兼容 CRLF 换行
+            line="${line%$'\r'}"
 
-            # 去除首尾空格
-            key=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            # 去除首尾空白
+            line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 
-            # 去除引号
-            value=$(echo "$value" | sed 's/^["'\'']//;s/["'\'']$//')
+            # 跳过空行与整行注释
+            [ -z "$line" ] && continue
+            [[ "$line" == \#* ]] && continue
+
+            # 必须是键值对
+            [[ "$line" != *=* ]] && continue
+            key="${line%%=*}"
+            raw="${line#*=}"
+
+            # 去除 key 首尾空格、value 前导空格
+            key="$(printf '%s' "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            raw="$(printf '%s' "$raw" | sed 's/^[[:space:]]*//')"
+
+            # 引号感知取值：引号内的 # 保留，未加引号时按 shell 语义剥离注释
+            tail=""
+            case "$raw" in
+            \"*)
+                value="$(printf '%s' "$raw" | sed -n 's/^"\([^"]*\)".*$/\1/p')"
+                tail="$(printf '%s' "$raw" | sed -n 's/^"[^"]*"[[:space:]]*//p')"
+                ;;
+            \'*)
+                value="$(printf '%s' "$raw" | sed -n "s/^'\([^']*\)'.*\$/\1/p")"
+                tail="$(printf '%s' "$raw" | sed -n "s/^'[^']*'[[:space:]]*//p")"
+                ;;
+            *)
+                # 未加引号：剥离「空白之后的 #」起的注释，再去掉尾部空白
+                value="$(printf '%s' "$raw" | sed 's/[[:space:]]#.*$//;s/[[:space:]]*$//')"
+                ;;
+            esac
+
+            # 闭合引号之后若还有非注释内容，属格式异常，跳过以免误解析
+            if [ -n "$tail" ] && [[ "$tail" != \#* ]]; then
+                continue
+            fi
 
             # 严格校验 key 格式
             if [[ ! "$key" =~ ^[A-Z][A-Z0-9_]*$ ]]; then

@@ -358,18 +358,33 @@ cp server-scan.conf.example server-scan.conf
 
 ```bash
 # ---- 磁盘专项（disk_analyzer.sh）----
-DISK_USAGE_WARNING_THRESHOLD=80      # 磁盘使用率警告阈值
-DISK_USAGE_CRITICAL_THRESHOLD=90     # 磁盘使用率危险阈值
-IO_AWAIT_EXCELLENT_THRESHOLD=10      # I/O await 优秀阈值（ms）
-DOCKER_DATA_DIR=""                   # 自定义 Docker 数据目录
+# 磁盘使用率警告阈值（%）
+DISK_USAGE_WARNING_THRESHOLD=80
+# 磁盘使用率危险阈值（%）
+DISK_USAGE_CRITICAL_THRESHOLD=90
+# I/O await 优秀阈值（ms）
+IO_AWAIT_EXCELLENT_THRESHOLD=10
+# 自定义 Docker 数据目录
+DOCKER_DATA_DIR=""
+# Docker 镜像 Top N
 DOCKER_IMAGE_TOP=15
 
 # ---- CPU 与内存专项（cpu_mem_analyzer.sh）----
-SAMPLE_INTERVAL=1                    # 采样间隔（秒）
-SWAP_USAGE_WARNING_THRESHOLD=50      # Swap 使用率告警阈值（%）
-ZOMBIE_CRITICAL_THRESHOLD=50         # 僵尸进程 critical 阈值（个）
-D_STATE_WARNING_THRESHOLD=5          # D 状态进程告警阈值（个）
+# 采样间隔（秒）
+SAMPLE_INTERVAL=1
+# Swap 使用率告警阈值（%）
+SWAP_USAGE_WARNING_THRESHOLD=50
+# 僵尸进程 critical 阈值（个）
+ZOMBIE_CRITICAL_THRESHOLD=50
+# D 状态进程告警阈值（个）
+D_STATE_WARNING_THRESHOLD=5
 ```
+
+> **书写约定：注释请独占一行，放在变量上方**，不要写成 `KEY=value # 注释`。
+> 这样可以从源头避免「值里含 `#` 时被误判为注释」的歧义。
+> - 值含空格或特殊字符（含 `#`）时请用引号：`KEY="a #b"`，引号内的 `#` 会完整保留
+> - 未加引号的值中，空白之后的 `#` 仍按 shell 惯例视为注释（`abc#def` 不受影响）
+> - 已有行内注释无需手工改，`config upgrade` 会自动整理为独占一行
 
 完整示例见 `server-scan.conf.example`。
 

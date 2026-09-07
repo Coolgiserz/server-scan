@@ -6,6 +6,12 @@
 #                          SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_ TEMP_
 #   cpu_mem_analyzer.sh  取 CPU_MEM_ SAMPLE_ ENABLE_ SWAP_ ZOMBIE_ D_STATE_
 #
+# 书写约定（重要）:
+#   1. 注释必须独占一行，放在变量上方；不要写成 KEY=value # 注释
+#      这样才能彻底避免「值里含 # 时被误判为注释」的歧义
+#   2. 值若含空格或特殊字符（含 #），请用引号包裹: KEY="a #b"
+#   3. 未加引号的值中，连续空白之后的 # 仍会被当作注释（与 shell 行为一致）
+#
 # 通知配置请见 notify.conf.example：
 #   webhook 与签名密钥属于敏感信息，独立成文件以便单独设置 chmod 600，
 #   不与普通配置项混在一起。
@@ -21,114 +27,151 @@
 #   ./server-scan disk                       # 使用统一配置
 #   ./server-scan cpu-mem                    # 同一份配置同样生效
 #   ./server-scan disk -c my.conf            # 临时指定其他配置
+#
+# 配置变更时无需手工复制，执行 ./server-scan config upgrade 自动补齐新增项
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# 报告输出配置（通用）
-# ------------------------------------------------------------------------------
-REPORT_PATH=""                       # 报告输出路径（留空用默认产物目录）
+# 报告输出路径（留空用默认产物目录）
+REPORT_PATH=""
 
 # ==============================================================================
 # 一、磁盘专项（disk_analyzer.sh）
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# 磁盘使用率阈值
-# ------------------------------------------------------------------------------
-DISK_USAGE_WARNING_THRESHOLD=80      # 磁盘使用率警告阈值（%）
-DISK_USAGE_CRITICAL_THRESHOLD=90     # 磁盘使用率危险阈值（%）
+# 磁盘使用率警告阈值（%）
+DISK_USAGE_WARNING_THRESHOLD=80
 
-# ------------------------------------------------------------------------------
-# inode 使用率阈值
-# ------------------------------------------------------------------------------
-INODE_USAGE_WARNING_THRESHOLD=70     # inode 使用率警告阈值（%）
-INODE_USAGE_CRITICAL_THRESHOLD=90    # inode 使用率危险阈值（%）
+# 磁盘使用率危险阈值（%）
+DISK_USAGE_CRITICAL_THRESHOLD=90
 
-# ------------------------------------------------------------------------------
-# I/O 性能阈值
-# ------------------------------------------------------------------------------
-IO_AWAIT_EXCELLENT_THRESHOLD=10      # I/O await 优秀阈值（ms）
-IO_AWAIT_GOOD_THRESHOLD=20           # I/O await 正常阈值（ms）
-IO_AWAIT_SLOW_THRESHOLD=50           # I/O await 缓慢阈值（ms）
-IO_UTIL_HEALTHY_THRESHOLD=60         # I/O %util 健康阈值（%）
-IO_UTIL_BUSY_THRESHOLD=80            # I/O %util 繁忙阈值（%）
+# inode 使用率警告阈值（%）
+INODE_USAGE_WARNING_THRESHOLD=70
 
-# ------------------------------------------------------------------------------
-# 大文件扫描
-# ------------------------------------------------------------------------------
-LARGE_FILE_SCAN_DEPTH=6              # 大文件扫描深度
-LARGE_FILE_SIZE_THRESHOLD="1G"       # 大文件大小阈值
-LARGE_FILE_SCAN_TIMEOUT=30           # 大文件扫描超时时间（秒）
-LARGE_FILE_TOP=20                    # 大文件 Top N
+# inode 使用率危险阈值（%）
+INODE_USAGE_CRITICAL_THRESHOLD=90
 
-# ------------------------------------------------------------------------------
-# 日志文件扫描
-# ------------------------------------------------------------------------------
-LOG_SCAN_DIR="/var/log"              # 日志扫描目录
-LOG_FILE_SIZE_THRESHOLD="100M"       # 日志文件大小阈值
+# I/O await 优秀阈值（ms）
+IO_AWAIT_EXCELLENT_THRESHOLD=10
 
-# ------------------------------------------------------------------------------
-# Docker 扫描
-# ------------------------------------------------------------------------------
-# DOCKER_DATA_DIR: Docker 数据目录。当 docker 的 data-root 被改为非默认路径
-#   （如 /data/docker，常见于数据盘独立挂载）时必须在此指定，否则会误扫
-#   /var/lib/docker（该目录迁移后常作为残留空目录保留，导致统计大小失真）。
-#   也可用命令行 --docker-dir 指定，命令行优先级高于此处配置。
-# DOCKER_LOG_DIR: 容器日志目录，默认取 <DOCKER_DATA_DIR>/containers，
-#   仅当日志目录与数据目录分离时才需要单独指定（命令行 --docker-log-dir）。
-DOCKER_DATA_DIR=""                   # 自定义 Docker 数据目录（data-root 非默认时必填）
-DOCKER_LOG_DIR=""                    # 自定义容器日志目录（留空表示跟随数据目录）
-DOCKER_INFO_TIMEOUT=10               # docker info 探测超时（秒）
-DOCKER_IMAGE_TOP=15                  # Docker 镜像 Top N
-DOCKER_CONTAINER_TOP=10              # Docker 容器 Top N
-DOCKER_VOLUME_TOP=15                 # Docker 卷 Top N
-DOCKER_LOG_SIZE_THRESHOLD="100M"     # Docker 日志文件大小阈值
-DOCKER_BUILD_CACHE_TOP=15            # Docker 构建缓存 Top N
-DOCKER_CONTAINER_LOG_TOP=10          # 运行中容器日志大小 Top N
+# I/O await 正常阈值（ms）
+IO_AWAIT_GOOD_THRESHOLD=20
 
-# ------------------------------------------------------------------------------
-# 挂载点扫描
-# ------------------------------------------------------------------------------
-MOUNT_SCAN_DEPTH=1                   # 挂载点扫描深度
-MOUNT_SCAN_TOP=10                    # 挂载点扫描 Top N
-MOUNT_SCAN_TIMEOUT=20                # 挂载点扫描超时时间（秒）
+# I/O await 缓慢阈值（ms）
+IO_AWAIT_SLOW_THRESHOLD=50
 
-# ------------------------------------------------------------------------------
-# 指定目录扫描模式（-d/--dir）
-# ------------------------------------------------------------------------------
-SCAN_DEPTH=3                         # 指定目录扫描深度
-SCAN_TOP=20                          # 指定目录扫描 Top N
+# I/O %util 健康阈值（%）
+IO_UTIL_HEALTHY_THRESHOLD=60
 
-# ------------------------------------------------------------------------------
-# 实时 I/O 快照
-# ------------------------------------------------------------------------------
-ENABLE_REALTIME_IO="false"           # 是否启用实时 I/O 负载快照
-REALTIME_IO_INTERVAL=2               # 实时 I/O 采样间隔（秒）
+# I/O %util 繁忙阈值（%）
+IO_UTIL_BUSY_THRESHOLD=80
 
-# ------------------------------------------------------------------------------
-# macOS I/O 阈值
-# ------------------------------------------------------------------------------
-MACOS_IO_TPS_THRESHOLD=1000          # macOS I/O tps 阈值
-MACOS_IO_MBS_THRESHOLD=100           # macOS I/O MB/s 阈值
+# 大文件扫描深度
+LARGE_FILE_SCAN_DEPTH=6
 
-# ------------------------------------------------------------------------------
-# 报告建议阈值（触发报告末尾建议的门槛）
-# ------------------------------------------------------------------------------
-REPORT_DISK_USAGE_WARNING=85         # 磁盘使用率警告阈值（%）
-REPORT_INODE_USAGE_WARNING=80        # inode 使用率警告阈值（%）
-REPORT_IO_AWAIT_WARNING=20           # I/O await 警告阈值（ms）
-REPORT_IO_UTIL_WARNING=100           # I/O %util 警告阈值（%）
+# 大文件大小阈值
+LARGE_FILE_SIZE_THRESHOLD="1G"
 
-# ------------------------------------------------------------------------------
-# 临时文件与缓存扫描（--only temp）
-# ------------------------------------------------------------------------------
-TEMP_SCAN_DIRS="/tmp /var/tmp"       # 临时目录列表（空格分隔）
-TEMP_FILE_SIZE_THRESHOLD="100M"      # 大临时文件阈值
-TEMP_SCAN_DEPTH=3                    # 临时目录扫描深度
-TEMP_TOP=20                          # 临时文件 Top N
-TEMP_SCAN_TIMEOUT=20                 # 单个目录扫描超时时间（秒）
-TEMP_OLD_DAYS=7                      # 旧文件判定阈值（未访问天数）
-# 说明: 缓存目录按系统自动确定，无需配置
+# 大文件扫描超时时间（秒）
+LARGE_FILE_SCAN_TIMEOUT=30
+
+# 大文件 Top N
+LARGE_FILE_TOP=20
+
+# 日志扫描目录
+LOG_SCAN_DIR="/var/log"
+
+# 日志文件大小阈值
+LOG_FILE_SIZE_THRESHOLD="100M"
+
+# Docker 数据目录。当 docker 的 data-root 被改为非默认路径
+# （如 /data/docker，常见于数据盘独立挂载）时必须指定，否则会误扫
+# /var/lib/docker（该目录迁移后常作为残留空目录保留，导致统计大小失真）。
+# 也可用命令行 --docker-dir 指定，命令行优先级高于此处配置
+DOCKER_DATA_DIR=""
+
+# 容器日志目录，默认取 <DOCKER_DATA_DIR>/containers，
+# 仅当日志目录与数据目录分离时才需要单独指定（命令行 --docker-log-dir）
+DOCKER_LOG_DIR=""
+
+# docker info 探测超时（秒）
+DOCKER_INFO_TIMEOUT=10
+
+# Docker 镜像 Top N
+DOCKER_IMAGE_TOP=15
+
+# Docker 容器 Top N
+DOCKER_CONTAINER_TOP=10
+
+# Docker 卷 Top N
+DOCKER_VOLUME_TOP=15
+
+# Docker 日志文件大小阈值
+DOCKER_LOG_SIZE_THRESHOLD="100M"
+
+# Docker 构建缓存 Top N
+DOCKER_BUILD_CACHE_TOP=15
+
+# 运行中容器日志大小 Top N
+DOCKER_CONTAINER_LOG_TOP=10
+
+# 挂载点扫描深度
+MOUNT_SCAN_DEPTH=1
+
+# 挂载点扫描 Top N
+MOUNT_SCAN_TOP=10
+
+# 挂载点扫描超时时间（秒）
+MOUNT_SCAN_TIMEOUT=20
+
+# 指定目录扫描深度（-d/--dir 模式）
+SCAN_DEPTH=3
+
+# 指定目录扫描 Top N
+SCAN_TOP=20
+
+# 是否启用实时 I/O 负载快照
+ENABLE_REALTIME_IO="false"
+
+# 实时 I/O 采样间隔（秒）
+REALTIME_IO_INTERVAL=2
+
+# macOS I/O tps 阈值
+MACOS_IO_TPS_THRESHOLD=1000
+
+# macOS I/O MB/s 阈值
+MACOS_IO_MBS_THRESHOLD=100
+
+# 报告建议中的磁盘使用率警告阈值（%）
+REPORT_DISK_USAGE_WARNING=85
+
+# 报告建议中的 inode 使用率警告阈值（%）
+REPORT_INODE_USAGE_WARNING=80
+
+# 报告建议中的 I/O await 警告阈值（ms）
+REPORT_IO_AWAIT_WARNING=20
+
+# 报告建议中的 I/O %util 警告阈值（%）
+REPORT_IO_UTIL_WARNING=100
+
+# 临时目录列表（空格分隔）
+TEMP_SCAN_DIRS="/tmp /var/tmp"
+
+# 大临时文件阈值
+TEMP_FILE_SIZE_THRESHOLD="100M"
+
+# 临时目录扫描深度
+TEMP_SCAN_DEPTH=3
+
+# 临时文件 Top N
+TEMP_TOP=20
+
+# 单个目录扫描超时时间（秒）
+TEMP_SCAN_TIMEOUT=20
+
+# 旧文件判定阈值（未访问天数）
+TEMP_OLD_DAYS=7
+
+# 缓存目录按系统自动确定，无需配置
 #   Linux: /var/cache 与 ~/.cache
 #   macOS: ~/Library/Caches
 
@@ -136,18 +179,22 @@ TEMP_OLD_DAYS=7                      # 旧文件判定阈值（未访问天数�
 # 二、CPU 与内存专项（cpu_mem_analyzer.sh）
 # ==============================================================================
 
-# ------------------------------------------------------------------------------
-# 采样配置
-# ------------------------------------------------------------------------------
-ENABLE_MPSTAT="true"                 # 是否启用多核采样（仅 Linux 有效）
-SAMPLE_INTERVAL=1                    # 采样间隔（秒）
-SAMPLE_COUNT=3                       # 采样次数
+# 是否启用多核采样（仅 Linux 有效）
+ENABLE_MPSTAT="true"
 
-# ------------------------------------------------------------------------------
-# 告警阈值
-# 说明: 这些指标「存在即告警」会产生常态噪声（例如 macOS/Linux 常有少量
-#       swap 占用、僵尸进程与 D 状态进程瞬时出现），因此一律按阈值判定。
-# ------------------------------------------------------------------------------
-SWAP_USAGE_WARNING_THRESHOLD=50      # Swap 使用率告警阈值（%）
-ZOMBIE_CRITICAL_THRESHOLD=50         # 僵尸进程 critical 阈值（个）；低于此值仅提示
-D_STATE_WARNING_THRESHOLD=5          # D 状态进程告警阈值（个）；瞬时 IO 等待属常态
+# 采样间隔（秒）
+SAMPLE_INTERVAL=1
+
+# 采样次数
+SAMPLE_COUNT=3
+
+# Swap 使用率告警阈值（%）
+# 说明: 该指标「存在即告警」会产生常态噪声（macOS/Linux 常有少量 swap 占用），
+# 因此一律按阈值判定
+SWAP_USAGE_WARNING_THRESHOLD=50
+
+# 僵尸进程 critical 阈值（个）；低于此值仅提示
+ZOMBIE_CRITICAL_THRESHOLD=50
+
+# D 状态进程告警阈值（个）；瞬时 IO 等待属常态
+D_STATE_WARNING_THRESHOLD=5
