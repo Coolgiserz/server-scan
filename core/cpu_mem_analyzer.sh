@@ -18,6 +18,11 @@ ENABLE_MPSTAT="true" # Linux 下有效，macOS 自动忽略
 SAMPLE_INTERVAL=1
 SAMPLE_COUNT=3
 
+# --- 告警阈值（集中定义；指标"存在即告警"会造成常态噪声，一律按阈值判定）---
+SWAP_USAGE_WARNING_THRESHOLD=50 # Swap 使用率告警阈值（%）；macOS/Linux 均常有少量 swap 占用
+ZOMBIE_CRITICAL_THRESHOLD=50    # 僵尸进程 critical 阈值（个）；低于此值仅提示
+D_STATE_WARNING_THRESHOLD=5     # D 状态进程告警阈值（个）；瞬时 IO 等待属常态
+
 # 获取项目根目录（脚本位于 core/ 子目录，根目录为其上一级）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -255,12 +260,18 @@ if command -v bc &>/dev/null && [ "$CORES" != "N/A" ] && [ -n "$CORES" ] &&
     [ -n "$load1" ] && [ -n "$load5" ] && [ -n "$load15" ]; then
     threshold_busy=$(echo "$CORES * 1.0" | bc -l)
     threshold_danger=$(echo "$CORES * 2.0" | bc -l)
+    # 报告仍按 load1 展示即时状态；告警需 load5 同步越限才触发，
+    # 避免瞬时尖峰（备份/编译）造成告警抖动
     if (($(echo "$load1 > $threshold_danger" | bc -l))); then
         load_eval="$(ss::msg MSG_STATUS_DANGER)"
-        ss::alert_add "critical" "CPU" "系统负载" "load1=${load1}" "${load1}" "${threshold_danger}(核数×2)" "1分钟负载超过危险阈值" "排查高负载进程(top/ps)"
+        if (($(echo "$load5 > $threshold_danger" | bc -l))); then
+            ss::alert_add "critical" "CPU" "系统负载" "load1=${load1}/load5=${load5}" "${load1}" "${threshold_danger}(核数×2)" "1分钟与5分钟负载均超过危险阈值" "排查高负载进程(top/ps)"
+        fi
     elif (($(echo "$load1 > $threshold_busy" | bc -l))); then
         load_eval="$(ss::msg MSG_STATUS_BUSY)"
-        ss::alert_add "warning" "CPU" "系统负载" "load1=${load1}" "${load1}" "${threshold_busy}(核数×1)" "1分钟负载偏高" "关注负载趋势"
+        if (($(echo "$load5 > $threshold_busy" | bc -l))); then
+            ss::alert_add "warning" "CPU" "系统负载" "load1=${load1}/load5=${load5}" "${load1}" "${threshold_busy}(核数×1)" "1分钟与5分钟负载均偏高" "关注负载趋势"
+        fi
     else
         load_eval="$(ss::msg MSG_STATUS_HEALTHY)"
     fi
@@ -296,7 +307,7 @@ else
     wa_num=$(echo "$wa" | awk '{printf "%d", $1}')
     if [ "$wa_num" -gt 20 ]; then
         wa_status="$(ss::msg MSG_STATUS_BOTTLENECK)"
-        ss::alert_add "critical" "CPU" "IO等待" "wa=${wa}%" "${wa}%" "20%" "IO等待偏高，存在IO瓶颈" "排查磁盘IO或增加IO能力"
+        ss::alert_add "critical" "CPU" "IO等待" "wa=${wa}%" "${wa}%" "20%" "IO等待严重，存在IO瓶颈" "排查磁盘IO或增加IO能力"
     elif [ "$wa_num" -gt 10 ]; then
         wa_status="$(ss::msg MSG_STATUS_HIGH)"
         ss::alert_add "warning" "CPU" "IO等待" "wa=${wa}%" "${wa}%" "10%" "IO等待略高" "关注磁盘IO"
@@ -420,9 +431,13 @@ if [ "$OS_TYPE" = "Darwin" ]; then
     fi
 
     avail_num=$(echo "$avail_pct" | awk '{printf "%d", $1}')
-    if [ "$avail_num" -lt 10 ]; then
+    # 与 Linux 分支保持一致：5% 以下 critical，5%~10% warning
+    if [ "$avail_num" -lt 5 ]; then
         mem_status="$(ss::msg MSG_STATUS_INSUFFICIENT)"
-        ss::alert_add "critical" "内存" "可用内存占比" "available=${avail_pct}%" "${avail_pct}%" "10%" "可用内存不足，存在OOM风险" "释放内存或扩容"
+        ss::alert_add "critical" "内存" "可用内存占比" "available=${avail_pct}%" "${avail_pct}%" "5%" "可用内存严重不足，存在OOM风险" "立即释放内存或扩容"
+    elif [ "$avail_num" -lt 10 ]; then
+        mem_status="$(ss::msg MSG_STATUS_TENSE)"
+        ss::alert_add "warning" "内存" "可用内存占比" "available=${avail_pct}%" "${avail_pct}%" "10%" "可用内存偏紧" "关注内存使用趋势"
     else
         mem_status="$(ss::msg MSG_STATUS_SUFFICIENT)"
     fi
@@ -501,12 +516,19 @@ if [ "$OS_TYPE" = "Darwin" ]; then
         swap_used=$(echo "$SWAP_INFO" | awk -F'used = ' '{print $2}' | awk '{print $1}')
         swap_free=$(echo "$SWAP_INFO" | awk -F'free = ' '{print $2}' | awk '{print $1}')
 
-        # 简单判断是否使用
-        if echo "$SWAP_INFO" | grep -q "used = 0.00M"; then
-            swap_status="$(ss::msg MSG_CPU_MEM_SWAP_UNUSED)"
-        else
+        # 计算 swap 使用率。macOS 恒有少量 swap 占用（系统内存管理常态），
+        # 故按使用率阈值判断，而非"只要用了就告警"。
+        # used/total 同单位，剥离单位字母后取比值不受单位影响
+        swap_pct="0.00"
+        if [ -n "${swap_total%[A-Z]}" ] && [ "${swap_total%[A-Z]}" != "0.00" ] &&
+            [ -n "${swap_used%[A-Z]}" ]; then
+            swap_pct=$(awk "BEGIN {printf \"%.2f\", ${swap_used%[A-Z]}/${swap_total%[A-Z]}*100}")
+        fi
+        if [ "$(awk "BEGIN {print ($swap_pct > $SWAP_USAGE_WARNING_THRESHOLD) ? 1 : 0}")" = "1" ]; then
             swap_status="$(ss::msg MSG_CPU_MEM_SWAP_USED_MAC)"
-            ss::alert_add "warning" "内存" "Swap使用" "macOS swap" "-" "-" "已使用Swap，存在内存压力" "检查内存是否充足"
+            ss::alert_add "warning" "内存" "Swap使用率" "macOS swap" "${swap_pct}%" "${SWAP_USAGE_WARNING_THRESHOLD}%" "Swap 使用率超过阈值，存在内存压力" "检查内存是否充足"
+        else
+            swap_status="$(ss::msg MSG_CPU_MEM_SWAP_UNUSED)"
         fi
 
         echo "| $(ss::msg MSG_TABLE_METRIC) | $(ss::msg MSG_TABLE_VALUE) | $(ss::msg MSG_TABLE_STATUS) |"
@@ -531,9 +553,11 @@ else
         echo ""
     else
         swap_pct=$(awk "BEGIN {printf \"%.2f\", $swap_used/$swap_total*100}")
-        if [ "$swap_used" -gt 0 ]; then
+        # Linux 因 swappiness 常有少量 swap 占用（内存充足时也会换出冷页），
+        # 按使用率阈值判断才有意义
+        if [ "$(awk "BEGIN {print ($swap_pct > $SWAP_USAGE_WARNING_THRESHOLD) ? 1 : 0}")" = "1" ]; then
             swap_status="$(ss::msgf MSG_CPU_MEM_SWAP_USED "${swap_pct}")"
-            ss::alert_add "warning" "内存" "Swap使用" "used=${swap_used}KB/${swap_total}KB" "${swap_pct}%" "-" "已使用Swap，存在内存压力" "检查内存是否充足"
+            ss::alert_add "warning" "内存" "Swap使用率" "used=${swap_used}KB/${swap_total}KB" "${swap_pct}%" "${SWAP_USAGE_WARNING_THRESHOLD}%" "Swap 使用率超过阈值，存在内存压力" "检查内存是否充足"
         else
             swap_status="$(ss::msg MSG_CPU_MEM_SWAP_UNUSED)"
         fi
@@ -697,8 +721,14 @@ if [ "$OS_TYPE" = "Darwin" ]; then
 
     # macOS 僵尸进程
     z_count=$(ps ax -o stat= 2>/dev/null | grep -c '^Z')
+    # 僵尸进程仅占 PID 表项，少量属正常（父进程尚未 wait()），故分级；
+    # 与 sys_overview 的瓶颈告警对齐：少量为 warning，达到阈值才升级 critical
+    if [ "$z_count" -gt "$ZOMBIE_CRITICAL_THRESHOLD" ]; then
+        ss::alert_add "critical" "进程" "僵尸进程" "数量=${z_count}" "${z_count}" "${ZOMBIE_CRITICAL_THRESHOLD}" "僵尸进程数量过多，父进程可能异常退出" "检查并重启其父进程"
+    elif [ "$z_count" -gt 0 ]; then
+        ss::alert_add "warning" "进程" "僵尸进程" "数量=${z_count}" "${z_count}" "0" "存在少量僵尸进程，多为父进程未回收" "确认数量是否持续增长"
+    fi
     if [ "$z_count" -gt 0 ]; then
-        ss::alert_add "critical" "进程" "僵尸进程" "数量=${z_count}" "${z_count}" "0" "存在僵尸进程，父进程可能异常" "检查并重启其父进程"
         echo "### $(ss::msg MSG_CPU_MEM_ZOMBIE_DETAIL)"
         echo ""
         echo "| PID | PPID | 用户 | 命令 |"
@@ -733,8 +763,11 @@ else
 
     # D 状态进程
     d_count=$(ps aux 2>/dev/null | awk 'NR>1 && substr($8,1,1)=="D" {count++} END {print count+0}')
+    # D 状态多为瞬时 IO 等待，偶发 1~2 个属正常，达到阈值才说明存在 IO 阻塞
+    if [ "$d_count" -gt "$D_STATE_WARNING_THRESHOLD" ]; then
+        ss::alert_add "warning" "进程" "D状态进程" "数量=${d_count}" "${d_count}" "${D_STATE_WARNING_THRESHOLD}" "存在多个不可中断睡眠进程，可能存在 IO 阻塞" "排查缓慢的磁盘/网络IO"
+    fi
     if [ "$d_count" -gt 0 ]; then
-        ss::alert_add "warning" "进程" "D状态进程" "数量=${d_count}" "${d_count}" "0" "存在不可中断睡眠进程(通常等待IO)" "排查缓慢的磁盘/网络IO"
         echo "### $(ss::msg MSG_CPU_MEM_D_DETAIL)"
         echo ""
         echo "| PID | 用户 | CPU% | MEM% | 命令 |"
@@ -745,8 +778,14 @@ else
 
     # Z 状态进程
     z_count=$(ps aux 2>/dev/null | awk 'NR>1 && substr($8,1,1)=="Z" {count++} END {print count+0}')
+    # 僵尸进程仅占 PID 表项，少量属正常（父进程尚未 wait()），故分级；
+    # 与 sys_overview 的瓶颈告警对齐：少量为 warning，达到阈值才升级 critical
+    if [ "$z_count" -gt "$ZOMBIE_CRITICAL_THRESHOLD" ]; then
+        ss::alert_add "critical" "进程" "僵尸进程" "数量=${z_count}" "${z_count}" "${ZOMBIE_CRITICAL_THRESHOLD}" "僵尸进程数量过多，父进程可能异常退出" "检查并重启其父进程"
+    elif [ "$z_count" -gt 0 ]; then
+        ss::alert_add "warning" "进程" "僵尸进程" "数量=${z_count}" "${z_count}" "0" "存在少量僵尸进程，多为父进程未回收" "确认数量是否持续增长"
+    fi
     if [ "$z_count" -gt 0 ]; then
-        ss::alert_add "critical" "进程" "僵尸进程" "数量=${z_count}" "${z_count}" "0" "存在僵尸进程，父进程可能异常" "检查并重启其父进程"
         echo "### $(ss::msg MSG_CPU_MEM_ZOMBIE_DETAIL)"
         echo ""
         echo "| PID | PPID | 用户 | 命令 |"
@@ -901,12 +940,14 @@ else
 
     if [ "$file_max" -gt 0 ]; then
         file_pct=$(awk "BEGIN {printf \"%.2f\", $file_allocated/$file_max*100}")
-        if [ "${file_pct%.*}" -gt 80 ]; then
-            file_status="$(ss::msg MSG_STATUS_HIGH)"
-            ss::alert_add "warning" "句柄" "文件句柄使用率" "used=${file_allocated}/${file_max}" "${file_pct}%" "80%" "文件句柄使用偏高" "关注句柄趋势"
-        elif [ "${file_pct%.*}" -gt 90 ]; then
+        # 阈值必须从高到低判断：先判 90% 再判 80%。
+        # 反序时 >90% 会被 80% 分支截获，critical 永远不可达
+        if [ "${file_pct%.*}" -gt 90 ]; then
             file_status="$(ss::msg MSG_STATUS_DANGER)"
             ss::alert_add "critical" "句柄" "文件句柄使用率" "used=${file_allocated}/${file_max}" "${file_pct}%" "90%" "文件句柄即将耗尽" "排查句柄泄漏"
+        elif [ "${file_pct%.*}" -gt 80 ]; then
+            file_status="$(ss::msg MSG_STATUS_HIGH)"
+            ss::alert_add "warning" "句柄" "文件句柄使用率" "used=${file_allocated}/${file_max}" "${file_pct}%" "80%" "文件句柄使用偏高" "关注句柄趋势"
         else
             file_status="$(ss::msg MSG_STATUS_NORMAL)"
         fi
