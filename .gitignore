@@ -5,6 +5,9 @@ server-scan.conf
 # 旧版配置文件（统一配置前的遗留，仅作兼容回退，已不推荐使用）
 disk_analyzer.conf
 
+# config migrate / upgrade 自动生成的备份文件（含本机配置值，不入库）
+*.conf.bak
+
 # 通知配置（含 webhook 与签名密钥，禁止提交）
 notify.conf
 

@@ -384,6 +384,26 @@ D_STATE_WARNING_THRESHOLD=5          # D 状态进程告警阈值（个）
 > 需单独设置 `chmod 600`，不与普通配置项混用。详见下方
 > [通知推送 (Channel)](#通知推送-channel)，示例文件为 `notify.conf.example`。
 
+### 配置迁移与升级
+
+配置会随版本演进（文件更名、新增或废弃配置项），用 `server-scan config` 自动处理，
+无需手工复制粘贴：
+
+```bash
+./server-scan config check      # 检查: 生效文件、拼写错误/已废弃项、缺失的新增项
+./server-scan config upgrade    # 用示例配置补齐新增项（保留已有值，自动备份）
+./server-scan config migrate    # 旧版 disk_analyzer.conf 迁移到统一配置
+./server-scan config show       # 显示当前生效的配置文件与内容
+```
+
+| 操作 | 行为 | 备份 |
+|------|------|------|
+| `check` | 报告生效文件与来源、不在示例中的可疑键、尚未写入的新增键；有问题时退出码 1 | 不修改 |
+| `upgrade` | 只追加当前配置**缺失**的键（取自示例的默认值），已有值与注释原样保留 | `server-scan.conf.bak` |
+| `migrate` | 统一配置不存在时以旧文件为基础生成；已存在时只补入旧文件独有键，不覆盖现有值 | 旧文件改名 `disk_analyzer.conf.bak` |
+
+若仍在使用旧版 `disk_analyzer.conf`，每次扫描会提示执行 `config migrate`。
+
 ## 通知推送 (Channel)
 
 支持将扫描结果推送到外部 Channel，当前内置**飞书自定义机器人**。

@@ -310,7 +310,19 @@ ss::config_path() {
 # 初始加载（在解析命令行参数之前）
 ss::config_init() {
     SS_CONFIG_PREFIXES=("$@")
+    local preset="${CONFIG_FILE:-}"
     CONFIG_FILE="$(ss::config_path)"
+
+    # 旧版配置回退提示。两点注意:
+    # 1) 必须在此处判断: CONFIG_FILE 由命令替换赋值，
+    #    其内部的变量赋值不会传出子 shell
+    # 2) 此时尚未进入报告流程（exec 3>&1 在 ss::report_begin 中执行），
+    #    fd3 未建立，不能复用 ss::log_warn，需直接写 stderr
+    if [ -z "$preset" ] && [ ! -f "$SCRIPT_DIR/server-scan.conf" ] &&
+        [ -f "$SCRIPT_DIR/disk_analyzer.conf" ] && [ "$QUIET" != "true" ]; then
+        printf '\033[1;33m⚠️  %s\033[0m\n' "$(ss::msg MSG_CONFIG_WARN_LEGACY)" >&2
+    fi
+
     ss::load_config "$CONFIG_FILE" "${SS_CONFIG_PREFIXES[@]}" NOTIFY_
     SS_CONFIG_LOADED="$CONFIG_FILE"
 }
