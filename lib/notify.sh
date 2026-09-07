@@ -104,11 +104,17 @@ ss::notify_init() {
     NOTIFY_CONFIG_FILE=""
     for conf in "${candidates[@]}"; do
         [ -z "$conf" ] && continue
-        if [ -f "$conf" ]; then
-            ss::load_config "$conf" NOTIFY_
-            NOTIFY_CONFIG_FILE="$conf"
-            break
+        [ -f "$conf" ] || continue
+        # 只接受真正含 NOTIFY_ 配置项的文件:
+        # 统一配置(server-scan.conf)按前缀不含通知项，若在此被选中会
+        # 提前 break，导致后续候选里已配置的 notify.conf 永远读不到，
+        # 表现为「明明配置了 NOTIFY_WEBHOOK 却提示未配置」
+        if ! grep -qE '^[[:space:]]*NOTIFY_[A-Z0-9_]*[[:space:]]*=' "$conf" 2>/dev/null; then
+            continue
         fi
+        ss::load_config "$conf" NOTIFY_
+        NOTIFY_CONFIG_FILE="$conf"
+        break
     done
 
     # 命令行参数优先级最高
