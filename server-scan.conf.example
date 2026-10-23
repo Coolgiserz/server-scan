@@ -5,6 +5,7 @@
 #   disk_analyzer.sh     取 DISK_ INODE_ IO_ LARGE_FILE_ LOG_ DOCKER_ MOUNT_
 #                          SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_ TEMP_
 #   cpu_mem_analyzer.sh  取 CPU_MEM_ SAMPLE_ ENABLE_ SWAP_ ZOMBIE_ D_STATE_
+#   container_monitor.sh 取 CONTAINER_
 #
 # 书写约定（重要）:
 #   1. 注释必须独占一行，放在变量上方；不要写成 KEY=value # 注释
@@ -198,3 +199,24 @@ ZOMBIE_CRITICAL_THRESHOLD=50
 
 # D 状态进程告警阈值（个）；瞬时 IO 等待属常态
 D_STATE_WARNING_THRESHOLD=5
+
+# ==============================================================================
+# 三、容器健康监控专项（container_monitor.sh）
+# ==============================================================================
+
+# 待监控的容器名列表（空格或逗号分隔）。留空表示不按容器名监控
+# 判定：容器不存在，或运行状态非 running，或（启用健康判定时）健康为 unhealthy 时告警
+# 示例: CONTAINER_NAMES="nginx mysql redis"
+CONTAINER_NAMES=""
+
+# 待监控的镜像列表（镜像名:标签 或 镜像 ID，空格或逗号分隔）
+# 语义：该镜像至少要有一个处于 running 的容器，否则告警
+# 示例: CONTAINER_IMAGES="redis:7 mysql:8 myrepo/app:latest"
+CONTAINER_IMAGES=""
+
+# docker 命令探测超时（秒）。守护进程无响应时避免脚本挂起
+CONTAINER_DOCKER_TIMEOUT=10
+
+# 是否将 Docker 健康状态（HEALTHCHECK）纳入判定
+# true：running 且 unhealthy 视为异常；false：仅按运行状态判断
+CONTAINER_CHECK_HEALTH="true"

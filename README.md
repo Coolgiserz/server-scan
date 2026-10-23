@@ -15,6 +15,7 @@
 | `core/disk_analyzer.sh` | `disk` | 磁盘空间 / IO / 健康分析 | 排查磁盘满、IO 瓶颈、SMART 预警 |
 | `core/network_analyzer.sh` | `network` | 网络专项排查 | 接口、连通性、连接数、DNS |
 | `core/security_scanner.sh` | `security` | 杀毒软件 / 主机安全防护检测 | 排查服务器上是否部署杀毒 / HIDS / EDR |
+| `core/container_monitor.sh` | `container` | 容器 / 镜像健康监控 | 检查指定容器与镜像的运行状态、Docker 健康 |
 | `core/cron_setup.sh` | `cron` | 定时任务管理 | 交互式配置 crontab 定时巡检 |
 
 ## 目录结构
@@ -28,6 +29,7 @@ server-scan/
 │   ├── disk_analyzer.sh
 │   ├── network_analyzer.sh
 │   ├── security_scanner.sh
+│   ├── container_monitor.sh # 容器 / 镜像健康监控
 │   └── cron_setup.sh       # 定时任务管理
 ├── lib/                     # 共享库与语言包
 │   ├── common.sh            # 通用函数（进度、报告、超时、配置加载）
@@ -76,6 +78,11 @@ chmod +x server-scan core/*.sh
 # 扫描杀毒软件 / 主机安全防护
 ./server-scan security
 
+# 容器健康监控（在配置文件里写 CONTAINER_NAMES / CONTAINER_IMAGES，或用命令行临时指定）
+./server-scan container
+./server-scan container --container nginx --container redis
+./server-scan container --image nginx:1.25 --no-health
+
 # 运行所有诊断
 ./server-scan all
 ```
@@ -88,6 +95,7 @@ chmod +x server-scan core/*.sh
 ./core/disk_analyzer.sh
 ./core/network_analyzer.sh
 ./core/security_scanner.sh
+./core/container_monitor.sh
 ```
 
 ## 公共 CLI 选项
@@ -133,6 +141,13 @@ chmod +x server-scan core/*.sh
 | `--no-mpstat` | 禁用多核采样（Linux 下有效） |
 | `--interval N` | 采样间隔（秒，默认: 1） |
 | `--count N` | 采样次数（默认: 3） |
+
+**core/container_monitor.sh:**
+| 选项 | 说明 |
+|------|------|
+| `--container NAME` | 追加监控的容器名（可多次指定，与配置 `CONTAINER_NAMES` 合并） |
+| `--image REF` | 追加监控的镜像引用（`名:标签` 或镜像 ID，可多次指定，与配置 `CONTAINER_IMAGES` 合并） |
+| `--no-health` | 本次不纳入 Docker HEALTHCHECK 健康状态判定（只看运行状态） |
 
 ## 磁盘分类扫描 (--only)
 
@@ -195,7 +210,8 @@ output/
 │   └── disk_20260904_094545.{md,json}
 ├── cpu_mem/
 ├── network/
-└── security/
+├── security/
+└── container/
 ```
 
 - 同一文件名成对出现：`.md` 报告 + `.json` 结构化告警，JSON 路径即把报告后缀 `.md` 换成 `.json`
@@ -335,6 +351,12 @@ brew install coreutils smartmontools
 - 按类别分类：传统杀毒 / 主机安全 (HIDS) / EDR 终端防护
 - 检测结论与部署建议（只读检测，不会停止或修改任何防护软件）
 
+**容器监控报告** (`core/container_monitor.sh`)
+- Docker 环境前置探测（CLI 是否存在、守护进程是否可达、探测是否超时）
+- 逐容器判定：运行状态（running / exited / restarting / paused / dead 等）+ HEALTHCHECK 健康状态
+- 逐镜像判定：`ancestor` 过滤下运行容器数是否 ≥ 1（区分「已有容器均停止」与「无任何容器」）
+- 检测结果表 / 判定规则说明 / 结论三章节；异常目标生成结构化告警并经通知链路推送
+
 ## 自定义配置
 
 ### 命令行配置
@@ -378,6 +400,16 @@ SWAP_USAGE_WARNING_THRESHOLD=50
 ZOMBIE_CRITICAL_THRESHOLD=50
 # D 状态进程告警阈值（个）
 D_STATE_WARNING_THRESHOLD=5
+
+# ---- 容器健康监控专项（container_monitor.sh）----
+# 监控的容器名列表（空格或逗号分隔）
+CONTAINER_NAMES="nginx redis"
+# 监控的镜像引用列表（名:标签或镜像 ID，空格或逗号分隔）
+CONTAINER_IMAGES=""
+# docker 命令探测超时（秒）
+CONTAINER_DOCKER_TIMEOUT=10
+# 是否纳入 Docker HEALTHCHECK 健康状态判定
+CONTAINER_CHECK_HEALTH="true"
 ```
 
 > **书写约定：注释请独占一行，放在变量上方**，不要写成 `KEY=value # 注释`。

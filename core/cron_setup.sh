@@ -165,7 +165,10 @@ _ss_cron_build_expr() {
         minute=$((10#$minute))
         dow=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_WEEKDAY)" "0")
         case "$dow" in
-        '' | *[!0-6]*) ss::log_error "$(ss::msg MSG_CRON_ERR_INVALID_CHOICE)"; return 1 ;;
+        '' | *[!0-6]*)
+            ss::log_error "$(ss::msg MSG_CRON_ERR_INVALID_CHOICE)"
+            return 1
+            ;;
         esac
         expr="$minute $hour * * $dow"
         ;;
@@ -182,7 +185,10 @@ _ss_cron_build_expr() {
         minute=$((10#$minute))
         dom=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_DAY)" "1")
         case "$dom" in
-        '' | *[!0-9]*) ss::log_error "$(ss::msg MSG_CRON_ERR_INVALID_CHOICE)"; return 1 ;;
+        '' | *[!0-9]*)
+            ss::log_error "$(ss::msg MSG_CRON_ERR_INVALID_CHOICE)"
+            return 1
+            ;;
         esac
         expr="$minute $hour $dom * *"
         ;;
@@ -212,13 +218,14 @@ _ss_cron_add() {
     _ss_require_interactive
 
     # --- 1. 选择扫描任务 ---
-    local -a subs=("overview" "cpu-mem" "disk" "network" "security" "all")
+    local -a subs=("overview" "cpu-mem" "disk" "network" "security" "container" "all")
     local -a descs=(
         "$(ss::msg MSG_SCAN_SUBCMD_OVERVIEW)"
         "$(ss::msg MSG_SCAN_SUBCMD_CPUMEM)"
         "$(ss::msg MSG_SCAN_SUBCMD_DISK)"
         "$(ss::msg MSG_SCAN_SUBCMD_NETWORK)"
         "$(ss::msg MSG_SCAN_SUBCMD_SECURITY)"
+        "$(ss::msg MSG_SCAN_SUBCMD_CONTAINER)"
         "$(ss::msg MSG_SCAN_SUBCMD_ALL)"
     )
 
@@ -233,7 +240,7 @@ _ss_cron_add() {
 
     local pick
     pick=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_CHOICE)" "1")
-    if ! printf '%s' "$pick" | grep -Eq '^[1-6]$'; then
+    if ! printf '%s' "$pick" | grep -Eq '^[1-7]$'; then
         ss::log_error "$(ss::msg MSG_CRON_ERR_INVALID_CHOICE)"
         return 1
     fi
