@@ -391,9 +391,12 @@ _ss_config_check() {
     local unknown missing n
 
     # 只在当前配置中的键：可能是拼写错误或已被废弃
+    # 豁免服务健康扫描的按服务动态覆盖键（SERVICE_<大写服务名>_UNIT/_PROCESS/_PORT，
+    # 键名由用户的服务列表决定，示例文件无法穷举，不应误报 unknown）
     unknown=$(comm -13 \
         <(_ss_conf_keys "$CONFIG_EXAMPLE" | sort -u) \
-        <(_ss_conf_keys "$SS_EFFECTIVE_CONF" | sort -u))
+        <(_ss_conf_keys "$SS_EFFECTIVE_CONF" | sort -u) |
+        grep -Ev '^SERVICE_[A-Z0-9_]+_(UNIT|PROCESS|PORT)$' || true)
     # 只在示例中的键：尚未写入的新增项（使用内置默认值，补齐后可显式调整）
     missing=$(comm -23 \
         <(_ss_conf_keys "$CONFIG_EXAMPLE" | sort -u) \

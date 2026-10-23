@@ -6,6 +6,7 @@
 #                          SCAN_ ENABLE_ REALTIME_ MACOS_ REPORT_ TEMP_
 #   cpu_mem_analyzer.sh  取 CPU_MEM_ SAMPLE_ ENABLE_ SWAP_ ZOMBIE_ D_STATE_
 #   container_monitor.sh 取 CONTAINER_
+#   service_monitor.sh   取 SERVICE_
 #
 # 书写约定（重要）:
 #   1. 注释必须独占一行，放在变量上方；不要写成 KEY=value # 注释
@@ -220,3 +221,36 @@ CONTAINER_DOCKER_TIMEOUT=10
 # 是否将 Docker 健康状态（HEALTHCHECK）纳入判定
 # true：running 且 unhealthy 视为异常；false：仅按运行状态判断
 CONTAINER_CHECK_HEALTH="true"
+
+# ==============================================================================
+# 四、服务健康扫描专项（service_monitor.sh）
+# ==============================================================================
+
+# 待扫描的服务名列表（空格或逗号分隔，大小写不敏感，统一按小写处理）
+# 常见服务（redis/mysql/mariadb/mongod/postgresql/nginx/docker/sshd/rabbitmq/
+# kafka/zookeeper/elasticsearch/memcached/clickhouse）内置 unit 名/进程名/默认端口映射，
+# 未知服务按同名 unit 与同名进程兜底探测
+# 判定：systemd unit 状态 + 进程名匹配 + 端口监听三路信号组合，异常时飞书告警
+# 示例: SERVICE_NAMES="redis mysql mongod"
+SERVICE_NAMES=""
+
+# 服务全部正常时是否仍发送飞书通知
+# false（默认）：仅异常时推送，全部正常时静默（报告与告警 JSON 照常生成）
+# true：每次扫描都推送摘要，可用于确认定时任务本身在运行
+SERVICE_NOTIFY_ALWAYS="false"
+
+# 探测命令超时（秒），作用于 systemctl / ss / netstat，防止系统命令无响应时挂起
+SERVICE_PROBE_TIMEOUT=5
+
+# 按服务覆盖配置（可选）：键名格式 SERVICE_<大写服务名>_UNIT / _PROCESS / _PORT
+# 大写服务名规则：小写字母转大写、- 转 _（如 my-app → SERVICE_MY_APP_PORT）
+# UNIT / PROCESS 支持多候选（空格分隔），PORT 支持多端口（空格或逗号分隔）
+# PORT 设为 none 显式跳过端口检测（适用于已修改默认端口的服务）
+# 动态键无需写入本示例文件，直接在 server-scan.conf 中定义即可（config check 不会误报）
+# 示例（按需取消注释并修改）:
+# SERVICE_REDIS_UNIT="redis redis-server"
+# SERVICE_REDIS_PROCESS="redis-server"
+# SERVICE_REDIS_PORT="6379"
+# SERVICE_MYSQL_PORT="none"
+# SERVICE_MYAPP_PROCESS="my-app java"
+# SERVICE_MYAPP_PORT="8080 8443"

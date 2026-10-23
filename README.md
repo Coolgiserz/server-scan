@@ -16,6 +16,7 @@
 | `core/network_analyzer.sh` | `network` | 网络专项排查 | 接口、连通性、连接数、DNS |
 | `core/security_scanner.sh` | `security` | 杀毒软件 / 主机安全防护检测 | 排查服务器上是否部署杀毒 / HIDS / EDR |
 | `core/container_monitor.sh` | `container` | 容器 / 镜像健康监控 | 检查指定容器与镜像的运行状态、Docker 健康 |
+| `core/service_monitor.sh` | `service` | 服务健康扫描 | 检查 Redis / MySQL / MongoDB 等指定服务是否正常运行 |
 | `core/cron_setup.sh` | `cron` | 定时任务管理 | 交互式配置 crontab 定时巡检 |
 
 ## 目录结构
@@ -30,6 +31,7 @@ server-scan/
 │   ├── network_analyzer.sh
 │   ├── security_scanner.sh
 │   ├── container_monitor.sh # 容器 / 镜像健康监控
+│   ├── service_monitor.sh  # 宿主机服务健康扫描
 │   └── cron_setup.sh       # 定时任务管理
 ├── lib/                     # 共享库与语言包
 │   ├── common.sh            # 通用函数（进度、报告、超时、配置加载）
@@ -83,6 +85,10 @@ chmod +x server-scan core/*.sh
 ./server-scan container --container nginx --container redis
 ./server-scan container --image nginx:1.25 --no-health
 
+# 服务健康扫描（在配置文件里写 SERVICE_NAMES，或用命令行临时指定）
+./server-scan service
+./server-scan service --service redis --service mysql
+
 # 运行所有诊断
 ./server-scan all
 ```
@@ -96,6 +102,7 @@ chmod +x server-scan core/*.sh
 ./core/network_analyzer.sh
 ./core/security_scanner.sh
 ./core/container_monitor.sh
+./core/service_monitor.sh
 ```
 
 ## 公共 CLI 选项
@@ -148,6 +155,11 @@ chmod +x server-scan core/*.sh
 | `--container NAME` | 追加监控的容器名（可多次指定，与配置 `CONTAINER_NAMES` 合并） |
 | `--image REF` | 追加监控的镜像引用（`名:标签` 或镜像 ID，可多次指定，与配置 `CONTAINER_IMAGES` 合并） |
 | `--no-health` | 本次不纳入 Docker HEALTHCHECK 健康状态判定（只看运行状态） |
+
+**core/service_monitor.sh:**
+| 选项 | 说明 |
+|------|------|
+| `--service NAME` | 追加监控的服务名（可多次指定，与配置 `SERVICE_NAMES` 合并） |
 
 ## 磁盘分类扫描 (--only)
 
@@ -357,6 +369,13 @@ brew install coreutils smartmontools
 - 逐镜像判定：`ancestor` 过滤下运行容器数是否 ≥ 1（区分「已有容器均停止」与「无任何容器」）
 - 检测结果表 / 判定规则说明 / 结论三章节；异常目标生成结构化告警并经通知链路推送
 
+**服务健康扫描报告** (`core/service_monitor.sh`)
+- 环境探测：systemd 可用性（macOS 自动跳过 unit 信号）、进程可见性预检（非 root 降级防误报）
+- 三路信号一次性快照：systemd unit 状态表、进程表（comm 精确 + args 词匹配）、TCP LISTEN 端口表
+- 逐服务判定矩阵：unit 非 active 且进程不存在且端口未监听 → 异常；进程在但端口全部未监听 → 警告
+- 内置常见服务映射（redis / mysql / mongod / postgresql / nginx / kafka / elasticsearch 等），未知服务按同名 unit + 同名进程兜底，支持 `SERVICE_<大写服务名>_UNIT / _PROCESS / _PORT` 按服务覆盖
+- 检测结果表 / 判定规则说明 / 结论三章节；异常服务生成含服务名、异常状态、检测时间的结构化告警，默认仅异常时推送飞书
+
 ## 自定义配置
 
 ### 命令行配置
@@ -410,6 +429,16 @@ CONTAINER_IMAGES=""
 CONTAINER_DOCKER_TIMEOUT=10
 # 是否纳入 Docker HEALTHCHECK 健康状态判定
 CONTAINER_CHECK_HEALTH="true"
+
+# ---- 服务健康扫描专项（service_monitor.sh）----
+# 扫描的服务名列表（空格或逗号分隔；常见服务内置 unit/进程/端口映射，未知服务按同名探测）
+SERVICE_NAMES="redis mysql mongod"
+# 服务全部正常时是否仍发送通知（默认 false 仅异常时推送）
+SERVICE_NOTIFY_ALWAYS="false"
+# 探测命令超时（秒）
+SERVICE_PROBE_TIMEOUT=5
+# 按服务覆盖（可选，键名 = SERVICE_<大写服务名>_UNIT / _PROCESS / _PORT，PORT 设 none 跳过端口检测）
+# SERVICE_REDIS_PORT="6379"
 ```
 
 > **书写约定：注释请独占一行，放在变量上方**，不要写成 `KEY=value # 注释`。
@@ -604,6 +633,9 @@ NOTIFY_MODE=full NOTIFY_MSG_TYPE=card ./server-scan overview --notify
 
 # 每天凌晨 2 点巡检，仅在发现告警时推送飞书
 0 2 * * * NOTIFY_ON_ALERT_ONLY=true /path/to/server-scan overview
+
+# 每 5 分钟扫描一次服务健康（service 默认仅异常时推送飞书，正常时静默）
+*/5 * * * * /path/to/server-scan service
 ```
 
 > 手动配置时注意：cron 的 `PATH` 与终端不同，建议使用绝对路径；

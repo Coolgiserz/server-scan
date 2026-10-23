@@ -218,7 +218,7 @@ _ss_cron_add() {
     _ss_require_interactive
 
     # --- 1. 选择扫描任务 ---
-    local -a subs=("overview" "cpu-mem" "disk" "network" "security" "container" "all")
+    local -a subs=("overview" "cpu-mem" "disk" "network" "security" "container" "service" "all")
     local -a descs=(
         "$(ss::msg MSG_SCAN_SUBCMD_OVERVIEW)"
         "$(ss::msg MSG_SCAN_SUBCMD_CPUMEM)"
@@ -226,6 +226,7 @@ _ss_cron_add() {
         "$(ss::msg MSG_SCAN_SUBCMD_NETWORK)"
         "$(ss::msg MSG_SCAN_SUBCMD_SECURITY)"
         "$(ss::msg MSG_SCAN_SUBCMD_CONTAINER)"
+        "$(ss::msg MSG_SCAN_SUBCMD_SERVICE)"
         "$(ss::msg MSG_SCAN_SUBCMD_ALL)"
     )
 
@@ -240,7 +241,7 @@ _ss_cron_add() {
 
     local pick
     pick=$(_ss_ask "$(ss::msg MSG_CRON_PROMPT_CHOICE)" "1")
-    if ! printf '%s' "$pick" | grep -Eq '^[1-7]$'; then
+    if ! printf '%s' "$pick" | grep -Eq '^[1-8]$'; then
         ss::log_error "$(ss::msg MSG_CRON_ERR_INVALID_CHOICE)"
         return 1
     fi
