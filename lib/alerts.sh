@@ -61,14 +61,17 @@ ss::alerts_count() {
     local level="${1:-}"
     local n=0
     local item
-    for item in "${SS_ALERTS[@]}"; do
-        [ -z "$item" ] && continue
-        if [ -z "$level" ]; then
-            n=$((n + 1))
-        elif printf '%s' "$item" | grep -q "\"level\":\"${level}\""; then
-            n=$((n + 1))
-        fi
-    done
+    # bash 3.2 + set -u 下空数组 "${arr[@]}" 展开会报未绑定，先按计数保护
+    if [ ${#SS_ALERTS[@]} -gt 0 ]; then
+        for item in "${SS_ALERTS[@]}"; do
+            [ -z "$item" ] && continue
+            if [ -z "$level" ]; then
+                n=$((n + 1))
+            elif printf '%s' "$item" | grep -q "\"level\":\"${level}\""; then
+                n=$((n + 1))
+            fi
+        done
+    fi
     printf '%s' "$n"
 }
 
@@ -104,15 +107,18 @@ ss::alerts_write_json() {
         printf '  "alerts": [\n'
         local i=0
         local item
-        for item in "${SS_ALERTS[@]}"; do
-            [ -z "$item" ] && continue
-            printf '    %s' "$item"
-            i=$((i + 1))
-            if [ "$i" -lt "$total" ]; then
-                printf ','
-            fi
-            printf '\n'
-        done
+        # bash 3.2 + set -u 下空数组 "${arr[@]}" 展开会报未绑定，先按计数保护
+        if [ ${#SS_ALERTS[@]} -gt 0 ]; then
+            for item in "${SS_ALERTS[@]}"; do
+                [ -z "$item" ] && continue
+                printf '    %s' "$item"
+                i=$((i + 1))
+                if [ "$i" -lt "$total" ]; then
+                    printf ','
+                fi
+                printf '\n'
+            done
+        fi
         printf '  ]\n'
         printf '}\n'
     } >"$json_path"
