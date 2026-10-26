@@ -899,6 +899,7 @@ MSG_CONTAINER_SUMMARY_NO_TARGETS="未配置监控目标"
 MSG_CONTAINER_SUMMARY_ENV_FAIL="Docker 环境不可用，无法监控"
 MSG_CONTAINER_SUMMARY_OK="全部 %s 个监控目标正常"
 MSG_CONTAINER_SUMMARY_ALERT="监控 %s 个目标：%s 正常，%s 异常"
+MSG_CONTAINER_SUMMARY_STATUS_LIST="各目标状态："
 MSG_CONFIG_WARN_LEGACY="检测到旧版配置文件，建议执行 server-scan config migrate 迁移到统一配置"
 
 # === 服务健康扫描 (service_monitor.sh) ===

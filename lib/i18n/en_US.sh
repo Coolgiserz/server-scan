@@ -899,6 +899,7 @@ MSG_CONTAINER_SUMMARY_NO_TARGETS="No monitoring targets configured"
 MSG_CONTAINER_SUMMARY_ENV_FAIL="Docker environment unavailable; cannot monitor"
 MSG_CONTAINER_SUMMARY_OK="All %s monitored targets healthy"
 MSG_CONTAINER_SUMMARY_ALERT="%s targets monitored: %s healthy, %s abnormal"
+MSG_CONTAINER_SUMMARY_STATUS_LIST="Target statuses:"
 MSG_CONFIG_WARN_LEGACY="Legacy config file detected; run 'server-scan config migrate' to move to the unified config"
 
 # === Service health scan (service_monitor.sh) ===

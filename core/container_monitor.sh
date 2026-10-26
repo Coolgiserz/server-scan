@@ -3,8 +3,9 @@
 # 脚本名称: container_monitor.sh
 # 功能描述: 监控指定 Docker 容器/镜像的运行状态与健康状态，异常（停止/退出/
 #           不健康/镜像无运行中容器/守护进程不可达）时收集告警并经 notify 推送。
-#           单次扫描模型：健康即不产生告警，配合 NOTIFY_ON_ALERT_ONLY=true 实现
-#           「恢复后自动静默」；扫描间隔由外部 crontab 负责。
+#           全部正常且用户显式 --notify（或 CONTAINER_NOTIFY_ALWAYS=true）时也会
+#           推送，摘要列出各目标状态清单；通知头部由 notify 库统一附带主机名，
+#           与磁盘等扫描器一致。单次扫描模型，扫描间隔由外部 crontab 负责。
 # 适用系统: Linux (CentOS/Ubuntu/Debian/RHEL) / macOS (Intel/Apple Silicon)
 # 依赖工具: docker CLI（需在运行容器的主机上可用）
 # 使用方法: ./container_monitor.sh [--container NAME]... [--image REF]... [--no-health]
@@ -21,6 +22,9 @@ CONTAINER_NAMES="${CONTAINER_NAMES:-}"
 CONTAINER_IMAGES="${CONTAINER_IMAGES:-}"
 CONTAINER_DOCKER_TIMEOUT="${CONTAINER_DOCKER_TIMEOUT:-10}"
 CONTAINER_CHECK_HEALTH="${CONTAINER_CHECK_HEALTH:-true}"
+# 全部正常时是否仍推送通知：true 时每次巡检均推送（正文含各目标状态清单），
+# 且不受全局 NOTIFY_ON_ALERT_ONLY=true 限制
+CONTAINER_NOTIFY_ALWAYS="${CONTAINER_NOTIFY_ALWAYS:-false}"
 
 # 定位项目根目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -196,7 +200,7 @@ _evaluate_container() {
     info=$(ss::run_with_timeout "$CONTAINER_DOCKER_TIMEOUT" docker inspect --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.RestartCount}}|{{.State.ExitCode}}' "$name" 2>/dev/null) || info=""
 
     if [ -z "$info" ]; then
-        RESULT_ROWS+=("$(ss::msg MSG_CONTAINER_TYPE_CONTAINER)|${name}|missing|-|-|critical")
+        RESULT_ROWS+=("${name}|$(ss::msg MSG_CONTAINER_TYPE_CONTAINER)|missing|-|-|critical")
         ss::alert_add "critical" \
             "$(ss::msg MSG_CONTAINER_DIM_CONTAINER)" \
             "$(ss::msg MSG_CONTAINER_METRIC_STATE)" \
@@ -271,7 +275,7 @@ _evaluate_container() {
 
     health_disp="$health"
     [ "$health" = "none" ] && health_disp="-"
-    RESULT_ROWS+=("$(ss::msg MSG_CONTAINER_TYPE_CONTAINER)|${name}|${state}|${health_disp}|${restart}|${verdict}")
+    RESULT_ROWS+=("${name}|$(ss::msg MSG_CONTAINER_TYPE_CONTAINER)|${state}|${health_disp}|${restart}|${verdict}")
 
     case "$verdict" in
     critical | warning)
@@ -294,7 +298,7 @@ _evaluate_image() {
     running_count=$(printf '%s\n' "$running_ids" | grep -c . || true)
 
     if [ "$running_count" -ge 1 ]; then
-        RESULT_ROWS+=("$(ss::msg MSG_CONTAINER_TYPE_IMAGE)|${ref}|$(ss::msgf MSG_CONTAINER_IMAGE_RUNNING_FMT "$running_count")|-|-|ok")
+        RESULT_ROWS+=("${ref}|$(ss::msg MSG_CONTAINER_TYPE_IMAGE)|$(ss::msgf MSG_CONTAINER_IMAGE_RUNNING_FMT "$running_count")|-|-|ok")
         return
     fi
 
@@ -306,7 +310,7 @@ _evaluate_image() {
         detail="$(ss::msgf MSG_CONTAINER_DETAIL_IMAGE_NONE "$ref")"
     fi
 
-    RESULT_ROWS+=("$(ss::msg MSG_CONTAINER_TYPE_IMAGE)|${ref}|$(ss::msgf MSG_CONTAINER_IMAGE_RUNNING_FMT "0")|-|-|critical")
+    RESULT_ROWS+=("${ref}|$(ss::msg MSG_CONTAINER_TYPE_IMAGE)|$(ss::msgf MSG_CONTAINER_IMAGE_RUNNING_FMT "0")|-|-|critical")
     ss::alert_add "critical" \
         "$(ss::msg MSG_CONTAINER_DIM_IMAGE)" \
         "$(ss::msg MSG_CONTAINER_METRIC_RUNNING)" \
@@ -369,6 +373,8 @@ elif [ "$SKIP_TARGETS" = "true" ]; then
 else
     echo "| $(ss::msg MSG_CONTAINER_COL_TARGET) | $(ss::msg MSG_CONTAINER_COL_TYPE) | $(ss::msg MSG_CONTAINER_COL_STATE) | $(ss::msg MSG_CONTAINER_COL_HEALTH) | $(ss::msg MSG_CONTAINER_COL_RESTART) | $(ss::msg MSG_CONTAINER_COL_VERDICT) |"
     echo "| --- | --- | --- | --- | --- | --- |"
+    # 汇总各目标状态行，供「全部正常 + 主动通知」时摘要携带清单
+    _status_lines=""
     if [ ${#RESULT_ROWS[@]} -gt 0 ]; then
         for _row in "${RESULT_ROWS[@]}"; do
             IFS='|' read -r _c_target _c_type _c_state _c_health _c_restart _c_verdict <<<"$_row"
@@ -392,6 +398,11 @@ else
             esac
             printf '| %s | %s | %s | %s | %s | %s %s |\n' \
                 "$_c_target" "$_c_type" "$_c_state" "$_c_health" "$_c_restart" "$_c_icon" "$_c_text"
+            _status_line="${_c_icon} ${_c_target}: ${_c_state}"
+            if [ "$_c_health" != "-" ]; then
+                _status_line="${_status_line}(${_c_health})"
+            fi
+            _status_lines="${_status_lines}${_status_lines:+$'\n'}${_status_line}"
         done
     fi
     echo ""
@@ -447,6 +458,10 @@ elif [ "$SKIP_TARGETS" = "true" ]; then
     _summary="$(ss::msg MSG_CONTAINER_SUMMARY_ENV_FAIL)"
 elif [ "$_abnormal" -eq 0 ]; then
     _summary="$(ss::msgf MSG_CONTAINER_SUMMARY_OK "$_total_targets")"
+    # 全部正常时摘要附各目标状态清单，供「主动通知」场景直接阅读服务及状态
+    if [ -n "${_status_lines:-}" ]; then
+        _summary="${_summary}"$'\n'"$(ss::msg MSG_CONTAINER_SUMMARY_STATUS_LIST)"$'\n'"${_status_lines}"
+    fi
 else
     _summary="$(ss::msgf MSG_CONTAINER_SUMMARY_ALERT "$_total_targets" "$_normal" "$_abnormal")"
 fi
@@ -457,10 +472,18 @@ if [ "$JSON_OUTPUT" = "true" ]; then
 fi
 
 # --- 可选：通知推送（飞书）---
+# 通知头部由 notify 库统一附带主机名（与磁盘等扫描器一致）。
+# 全部正常且用户主动要求通知（显式 --notify 或 CONTAINER_NOTIFY_ALWAYS=true）
+# 时，临时解除全局「仅告警推送」开关，避免正常巡检被 NOTIFY_ON_ALERT_ONLY
+# 静默拦截；有告警时维持原有推送行为不变
+_alert_total=$(ss::alerts_count)
+if [ "$_alert_total" -eq 0 ] && { [ "$SS_CLI_NOTIFY_ENABLED" = "true" ] || [ "$CONTAINER_NOTIFY_ALWAYS" = "true" ]; }; then
+    # shellcheck disable=SC2034  # 由 lib/notify.sh 的 ss::notify_send 消费
+    NOTIFY_ON_ALERT_ONLY="false"
+fi
 ss::notify_send "$(ss::msg MSG_CONTAINER_REPORT_TITLE)" "$REPORT_PATH" "$_summary" || true
 
 # --- 退出码：0 正常 / 1 有告警 / 2 参数错误 ---
-_alert_total=$(ss::alerts_count)
 if [ "$_alert_total" -gt 0 ]; then
     exit 1
 fi

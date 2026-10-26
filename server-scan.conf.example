@@ -222,6 +222,13 @@ CONTAINER_DOCKER_TIMEOUT=10
 # true：running 且 unhealthy 视为异常；false：仅按运行状态判断
 CONTAINER_CHECK_HEALTH="true"
 
+# 全部正常时是否仍推送通知
+# true：每次巡检均推送，正文含各容器/镜像状态清单（通知头部附带主机名）；
+#       不受全局 NOTIFY_ON_ALERT_ONLY=true 限制
+# false：跟随全局通知配置（默认；配合 NOTIFY_ON_ALERT_ONLY=true 可实现
+#        「异常推送、恢复后静默」）
+CONTAINER_NOTIFY_ALWAYS="false"
+
 # ==============================================================================
 # 四、服务健康扫描专项（service_monitor.sh）
 # ==============================================================================
