@@ -98,9 +98,12 @@ _service_raw="$(printf '%s' "$SERVICE_NAMES" | tr ',' ' ')"
 if [ ${#_CLI_SERVICES[@]} -gt 0 ]; then
     _service_raw="$_service_raw ${_CLI_SERVICES[*]}"
 fi
+# set -f 关闭路径名扩展：防止含 * ? [ 的 token 被 glob 展开成文件名
+set -f
 for _t in $(printf '%s' "$_service_raw" | tr ' \t,' '\n\n\n' | sed '/^$/d' | tr '[:upper:]' '[:lower:]' | awk 'NF && !seen[$0]++'); do
     SERVICE_TARGETS+=("$_t")
 done
+set +f
 NO_TARGETS=false
 if [ ${#SERVICE_TARGETS[@]} -eq 0 ]; then
     NO_TARGETS=true
@@ -109,16 +112,13 @@ fi
 # --- 进程可见性预检（非 root 时部分进程不可见，判定需降级防误报） ---
 CAN_SEE_ALL_PROCS="true"
 # awk 提前 exit 会使 ps 收到 SIGPIPE，pipefail 下需 || true 兜底
-if [ "$OS_TYPE" = "Darwin" ]; then
-    _test_pid=$(ps -eo pid= -o user= 2>/dev/null | awk '$2=="root" {print $1; exit}' || true)
-    if [ -n "$_test_pid" ] && ! ps -p "$_test_pid" -o comm= >/dev/null 2>&1; then
-        CAN_SEE_ALL_PROCS="false"
-    fi
-else
-    _test_pid=$(ps -eo pid= -o user= 2>/dev/null | awk '$2=="root" {print $1; exit}' || true)
-    if [ -n "$_test_pid" ] && [ ! -r "/proc/$_test_pid/comm" ]; then
-        CAN_SEE_ALL_PROCS="false"
-    fi
+_test_pid=$(ps -eo pid= -o user= 2>/dev/null | awk '$2=="root" {print $1; exit}' || true)
+# 判定口径：ps 能否实际读到 root 进程名（跨平台一致）。不用 /proc/<pid>/comm
+# 可读性判定：Linux 4.10 起该文件为 0400，非 root 恒不可读，但 ps 经
+# /proc/<pid>/stat 仍能列出全部进程名，旧判定会在非 root cron 场景误报
+# 可见性受限，把「进程缺失且无端口佐证」的真实 critical 降级为 warning
+if [ -n "$_test_pid" ] && [ -z "$(ps -p "$_test_pid" -o comm= 2>/dev/null)" ]; then
+    CAN_SEE_ALL_PROCS="false"
 fi
 
 # --- 检测时间戳（统一嵌入告警详情，满足通知含检测时间的要求） ---
@@ -129,9 +129,18 @@ SCAN_TS="$(date '+%Y-%m-%d %H:%M:%S')"
 # ==============================================================================
 
 # --- 快照 1: 进程表（comm 精确词匹配 + args 词匹配，覆盖 java 类与改标题进程） ---
-# args 快照过滤自身命令行，避免 --service 参数中的服务名造成误报
+# args 快照按 PID/PPID 排除自身（$$）与命令替换 fork 的同 argv 子 shell
+# （ppid==$$），避免 --service 参数中的服务名造成误报；不按名称/路径子串
+# 过滤：不受 ps 输出宽度截断与调用路径形态影响，也不会误杀部署路径含
+# 脚本名的合法进程
 PS_COMM_SNAPSHOT="$(ps -eo comm= 2>/dev/null || true)"
-PS_ARGS_SNAPSHOT="$(ps -eo args= 2>/dev/null | grep -v -e 'service_monitor' -e 'server-scan' || true)"
+PS_ARGS_SNAPSHOT="$(ps -eo pid=,ppid=,args= 2>/dev/null |
+    awk -v self="$$" '$1 != self && $2 != self {
+        sub(/^[[:space:]]*[0-9]+[[:space:]]+[0-9]+[[:space:]]+/, ""); print
+     }' || true)"
+# args 命令行位置快照（每行仅取第一个字段），供普通候选名做命令名匹配，
+# 避免无关进程参数文本中出现服务名（如 tail -f /var/log/redis.log）造成误报
+PS_ARGS_CMD_SNAPSHOT="$(printf '%s\n' "$PS_ARGS_SNAPSHOT" | awk 'NF {print $1}')"
 
 # --- 快照 2: systemd unit 状态表（Linux 且 systemd 真实可用时） ---
 SYSTEMD_OK=false
@@ -181,17 +190,33 @@ _ss_unit_state() {
         awk -v u="$1" '$1 == u || $1 == u".service" {print $3, $4; exit}'
 }
 
-# --- 进程匹配：comm 词匹配或 args 词匹配任一命中即算，stdout 输出命中的候选名 ---
+# --- 进程匹配：stdout 输出命中的候选名，未命中返回 1 ---
+# 分层匹配防误报：
+# - comm 快照为内核维护的命令名，无参数文本污染，做全行词匹配
+# - args 快照仅对首字段（命令名位置）做词匹配，覆盖改标题守护进程
+#   （如 "redis-server *:6379"），同时避免无关进程的参数文本恰好含
+#   服务名（编辑器会话、tail -f 日志、包装 shell 等）造成误命中
+# - 含点的候选名视为 java 类全限定名（如 kafka.Kafka、
+#   org.elasticsearch.bootstrap.Elasticsearch），其标识只出现在参数中部，
+#   额外做一次 args 全行词匹配
 # 不用 grep -q：-q 命中即退出会使上游 printf 收到 SIGPIPE，pipefail 下误判为未命中；
 # 改为 grep 全量读入后丢弃输出（>/dev/null），无 SIGPIPE 风险
 _ss_proc_match() {
     local p
     for p in $1; do
         if printf '%s\n' "$PS_COMM_SNAPSHOT" | grep -wF -- "$p" >/dev/null 2>&1 ||
-            printf '%s\n' "$PS_ARGS_SNAPSHOT" | grep -wF -- "$p" >/dev/null 2>&1; then
+            printf '%s\n' "$PS_ARGS_CMD_SNAPSHOT" | grep -wF -- "$p" >/dev/null 2>&1; then
             printf '%s' "$p"
             return 0
         fi
+        case "$p" in
+        *.*)
+            if printf '%s\n' "$PS_ARGS_SNAPSHOT" | grep -wF -- "$p" >/dev/null 2>&1; then
+                printf '%s' "$p"
+                return 0
+            fi
+            ;;
+        esac
     done
     return 1
 }
@@ -293,9 +318,6 @@ _record_abnormal() {
 }
 
 RESULT_ROWS=("$(ss::msg MSG_SERVICE_COL_SERVICE)|$(ss::msg MSG_SERVICE_COL_METHOD)|$(ss::msg MSG_SERVICE_COL_UNIT)|$(ss::msg MSG_SERVICE_COL_PROCESS)|$(ss::msg MSG_SERVICE_COL_PORT)|verdict|$(ss::msg MSG_SERVICE_COL_STATUS)")
-_ok=0
-_warn=0
-_crit=0
 
 # --- 单服务判定 ---
 # 解析覆盖键(${!var} 间接展开，禁 eval) → 匹配三路信号 → 判定矩阵 →
@@ -319,9 +341,25 @@ _evaluate_service() {
     val="${!var:-}"
     if [ -n "$val" ]; then ports="$val"; fi
     ports="$(printf '%s' "$ports" | tr ',' ' ')"
-    case "$ports" in
-    none | NONE) ports="" ;;
+    # none 大小写不敏感：显式跳过端口检测
+    case "$(printf '%s' "$ports" | tr '[:upper:]' '[:lower:]')" in
+    none) ports="" ;;
     esac
+    # 仅保留数字端口 token：丢弃配置手误产生的非法值（如 6379x），
+    # 避免其进入判定后稳定产出「端口 xx(未监听)」的误导 critical；
+    # set -f 防止含 * ? [ 的 token 被 glob 展开
+    if [ -n "$ports" ]; then
+        local _ports_clean="" _pp
+        set -f
+        for _pp in $ports; do
+            case "$_pp" in
+            *[!0-9]*) ;;
+            *) _ports_clean="${_ports_clean}${_ports_clean:+ }$_pp" ;;
+            esac
+        done
+        set +f
+        ports="$_ports_clean"
+    fi
 
     # --- systemd 信号：候选 unit 逐个查快照，优先取 active 命中 ---
     local unit_state="" matched_unit="" u st
@@ -350,11 +388,12 @@ _evaluate_service() {
     fi
 
     # --- 端口信号 ---
-    local ports_up=0 ports_down_list="" p
+    local ports_up=0 ports_down_list="" ports_up_list="" p
     if [ -n "$ports" ]; then
         for p in $ports; do
             if _ss_port_listening "$p"; then
                 ports_up=$((ports_up + 1))
+                ports_up_list="${ports_up_list}${ports_up_list:+ }${p}"
             else
                 ports_down_list="${ports_down_list}${ports_down_list:+ }${p}"
             fi
@@ -383,7 +422,7 @@ _evaluate_service() {
             if [ -n "$ports" ] && [ "$ports_up" -gt 0 ]; then
                 verdict="warning"
                 value="proc_unseen"
-                reason="$(ss::msgf MSG_SERVICE_REASON_PORT_UP_PROC_UNSEEN "$ports")"
+                reason="$(ss::msgf MSG_SERVICE_REASON_PORT_UP_PROC_UNSEEN "$ports_up_list")"
                 sugg="$(ss::msg MSG_SERVICE_SUGG_CHECK_PROC)"
             else
                 verdict="critical"
@@ -469,15 +508,12 @@ _evaluate_service() {
     case "$verdict" in
     ok)
         status_disp="$(ss::msg MSG_SERVICE_STATUS_OK)"
-        _ok=$((_ok + 1))
         ;;
     warning)
         status_disp="$(ss::msg MSG_SERVICE_STATUS_WARN)"
-        _warn=$((_warn + 1))
         ;;
     *)
         status_disp="$(ss::msg MSG_SERVICE_STATUS_CRIT)"
-        _crit=$((_crit + 1))
         ;;
     esac
 
