@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      # 复用仓库 .pre-commit-config.yaml（ShellCheck v0.10.0 + shfmt -i 4 + 通用钩子），
+      # 保证本地与 CI 的 lint 规则一致。仅校验本 PR 改动的文件（--from-ref/--to-ref），
+      # 避免对历史文件存量格式漂移误报；如需全量校验可改为 pre-commit run --all-files
+      - name: Run pre-commit on changed files
+        run: pre-commit run --from-ref origin/main --to-ref HEAD

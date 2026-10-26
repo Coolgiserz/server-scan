@@ -31,8 +31,9 @@ server-scan/
 │   ├── network_analyzer.sh
 │   ├── security_scanner.sh
 │   ├── container_monitor.sh # 容器 / 镜像健康监控
-│   ├── service_monitor.sh  # 宿主机服务健康扫描
-│   └── cron_setup.sh       # 定时任务管理
+│   ├── service_monitor.sh   # 宿主机服务健康扫描
+│   ├── config_manager.sh    # 配置迁移 / 升级 / 校验 / 查看
+│   └── cron_setup.sh        # 定时任务管理
 ├── lib/                     # 共享库与语言包
 │   ├── common.sh            # 通用函数（进度、报告、超时、配置加载）
 │   ├── cli.sh               # 统一 CLI 参数解析
@@ -40,8 +41,12 @@ server-scan/
 │   ├── notify.sh            # 通知推送（飞书）
 │   └── i18n/                # 中英文语言包
 ├── output/                  # 扫描产物（报告 + 告警 JSON，运行后生成，不入库）
+├── install.sh               # 一键安装 / 卸载脚本（--prefix / --uninstall）
 ├── server-scan.conf.example # 统一配置示例（所有扫描脚本共用一份）
-└── notify.conf.example      # 通知配置示例（含密钥，需 chmod 600）
+├── notify.conf.example      # 通知配置示例（含密钥，需 chmod 600）
+├── LICENSE                  # MIT 许可证
+├── CONTRIBUTING.md          # 贡献指南
+└── .github/workflows/       # CI 与发版流水线（ci.yml / release.yml）
 ```
 
 > 分析脚本统一收拢在 `core/`，根目录只保留 `server-scan` 作为全局入口。
@@ -92,6 +97,23 @@ chmod +x server-scan core/*.sh
 # 运行所有诊断
 ./server-scan all
 ```
+
+### 安装到系统（可选）
+
+仓库提供一键安装脚本，将 `server-scan` 入口、全部 `core/` 脚本与 `lib/` 共享库安装到目标目录并赋可执行权限（含卸载）：
+
+```bash
+# 安装到 /usr/local/bin（默认，可能需要 sudo）
+./install.sh
+
+# 安装到指定目录
+./install.sh --prefix ~/.local/bin
+
+# 卸载（仅删除本工具安装的文件）
+./install.sh --uninstall
+```
+
+> 安装后可直接用 `server-scan <子命令>` 调用；若目标目录不在 `PATH`，请将其加入 `PATH`。
 
 ### 直接执行脚本
 
@@ -641,6 +663,16 @@ NOTIFY_MODE=full NOTIFY_MSG_TYPE=card ./server-scan overview --notify
 > 手动配置时注意：cron 的 `PATH` 与终端不同，建议使用绝对路径；
 > 命令中的 `%` 需转义为 `\%`，否则其后的内容会被当作标准输入。
 
+## 安全与隐私
+
+server-scan 定位为**只读诊断工具**，关注以下安全与隐私要点：
+
+- **数据仅落本地**：扫描报告与告警 JSON 写入 `output/`（已加入 `.gitignore`，不入库）；脚本不会把任何主机数据上传到第三方。
+- **通知密钥保护**：`notify.conf` 含飞书 webhook 与签名密钥，已加入 `.gitignore`，请勿提交到代码仓库；建议 `chmod 600 notify.conf`，权限过宽时脚本会给出警告。
+- **调试用 `--webhook`**：该参数的 token 会出现在进程列表（`ps`）中，仅用于临时调试；生产环境请改用配置文件。
+- **只读采集**：除 `cron` 子命令会显式交互修改 crontab（仅操作带 `# server-scan:` 标记的条目、写入前自动备份）外，扫描过程不改动任何系统配置。
+- **推送失败不阻断**：通知推送失败不会影响扫描本身，也不会改变脚本退出码。
+
 ## 许可证
 
-MIT
+MIT 许可证。完整条款见仓库根目录 [LICENSE](LICENSE) 文件。
