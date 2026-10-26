@@ -3,9 +3,9 @@
 # 脚本名称: container_monitor.sh
 # 功能描述: 监控指定 Docker 容器/镜像的运行状态与健康状态，异常（停止/退出/
 #           不健康/镜像无运行中容器/守护进程不可达）时收集告警并经 notify 推送。
-#           全部正常且用户显式 --notify（或 CONTAINER_NOTIFY_ALWAYS=true）时也会
-#           推送，摘要列出各目标状态清单；通知头部由 notify 库统一附带主机名，
-#           与磁盘等扫描器一致。单次扫描模型，扫描间隔由外部 crontab 负责。
+#           通知头部由 notify 库统一附带主机名，与磁盘等扫描器一致；是否发送
+#           由统一配置 NOTIFY_ON_ALERT_ONLY 决定（true 仅异常推送，false 正常也推）。
+#           单次扫描模型，扫描间隔由外部 crontab 负责。
 # 适用系统: Linux (CentOS/Ubuntu/Debian/RHEL) / macOS (Intel/Apple Silicon)
 # 依赖工具: docker CLI（需在运行容器的主机上可用）
 # 使用方法: ./container_monitor.sh [--container NAME]... [--image REF]... [--no-health]
@@ -22,9 +22,6 @@ CONTAINER_NAMES="${CONTAINER_NAMES:-}"
 CONTAINER_IMAGES="${CONTAINER_IMAGES:-}"
 CONTAINER_DOCKER_TIMEOUT="${CONTAINER_DOCKER_TIMEOUT:-10}"
 CONTAINER_CHECK_HEALTH="${CONTAINER_CHECK_HEALTH:-true}"
-# 全部正常时是否仍推送通知：true 时每次巡检均推送（正文含各目标状态清单），
-# 且不受全局 NOTIFY_ON_ALERT_ONLY=true 限制
-CONTAINER_NOTIFY_ALWAYS="${CONTAINER_NOTIFY_ALWAYS:-false}"
 
 # 定位项目根目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -473,14 +470,9 @@ fi
 
 # --- 可选：通知推送（飞书）---
 # 通知头部由 notify 库统一附带主机名（与磁盘等扫描器一致）。
-# 全部正常且用户主动要求通知（显式 --notify 或 CONTAINER_NOTIFY_ALWAYS=true）
-# 时，临时解除全局「仅告警推送」开关，避免正常巡检被 NOTIFY_ON_ALERT_ONLY
-# 静默拦截；有告警时维持原有推送行为不变
+# 是否发送完全由统一的 NOTIFY_ON_ALERT_ONLY 决定：true 时仅异常推送，
+# false 时正常也会推送；与 disk/cpu 等扫描器语义一致，不做模块级特殊覆盖
 _alert_total=$(ss::alerts_count)
-if [ "$_alert_total" -eq 0 ] && { [ "$SS_CLI_NOTIFY_ENABLED" = "true" ] || [ "$CONTAINER_NOTIFY_ALWAYS" = "true" ]; }; then
-    # shellcheck disable=SC2034  # 由 lib/notify.sh 的 ss::notify_send 消费
-    NOTIFY_ON_ALERT_ONLY="false"
-fi
 ss::notify_send "$(ss::msg MSG_CONTAINER_REPORT_TITLE)" "$REPORT_PATH" "$_summary" || true
 
 # --- 退出码：0 正常 / 1 有告警 / 2 参数错误 ---

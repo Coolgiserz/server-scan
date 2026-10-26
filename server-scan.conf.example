@@ -222,13 +222,6 @@ CONTAINER_DOCKER_TIMEOUT=10
 # true：running 且 unhealthy 视为异常；false：仅按运行状态判断
 CONTAINER_CHECK_HEALTH="true"
 
-# 全部正常时是否仍推送通知
-# true：每次巡检均推送，正文含各容器/镜像状态清单（通知头部附带主机名）；
-#       不受全局 NOTIFY_ON_ALERT_ONLY=true 限制
-# false：跟随全局通知配置（默认；配合 NOTIFY_ON_ALERT_ONLY=true 可实现
-#        「异常推送、恢复后静默」）
-CONTAINER_NOTIFY_ALWAYS="false"
-
 # ==============================================================================
 # 四、服务健康扫描专项（service_monitor.sh）
 # ==============================================================================
@@ -240,11 +233,6 @@ CONTAINER_NOTIFY_ALWAYS="false"
 # 判定：systemd unit 状态 + 进程名匹配 + 端口监听三路信号组合，异常时飞书告警
 # 示例: SERVICE_NAMES="redis mysql mongod"
 SERVICE_NAMES=""
-
-# 服务全部正常时是否仍发送飞书通知
-# false（默认）：仅异常时推送，全部正常时静默（报告与告警 JSON 照常生成）
-# true：每次扫描都推送摘要，可用于确认定时任务本身在运行
-SERVICE_NOTIFY_ALWAYS="false"
 
 # 探测命令超时（秒），作用于 systemctl / ss / netstat，防止系统命令无响应时挂起
 SERVICE_PROBE_TIMEOUT=5

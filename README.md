@@ -451,17 +451,10 @@ CONTAINER_IMAGES=""
 CONTAINER_DOCKER_TIMEOUT=10
 # 是否纳入 Docker HEALTHCHECK 健康状态判定
 CONTAINER_CHECK_HEALTH="true"
-# 全部正常时是否仍推送通知（默认 false，仅异常时推送）
-# true：每次巡检都推送，正文含各容器/镜像状态清单，且不受全局
-#       NOTIFY_ON_ALERT_ONLY=true 限制（与 service 的 SERVICE_NOTIFY_ALWAYS 同理）
-# 注意：本键属于「统一配置 server-scan.conf」，不要写进 notify.conf
-CONTAINER_NOTIFY_ALWAYS="false"
 
 # ---- 服务健康扫描专项（service_monitor.sh）----
 # 扫描的服务名列表（空格或逗号分隔；常见服务内置 unit/进程/端口映射，未知服务按同名探测）
 SERVICE_NAMES="redis mysql mongod"
-# 服务全部正常时是否仍发送通知（默认 false 仅异常时推送）
-SERVICE_NOTIFY_ALWAYS="false"
 # 探测命令超时（秒）
 SERVICE_PROBE_TIMEOUT=5
 # 按服务覆盖（可选，键名 = SERVICE_<大写服务名>_UNIT / _PROCESS / _PORT，PORT 设 none 跳过端口检测）
@@ -553,13 +546,11 @@ chmod 600 notify.conf
 > **扫描结果与退出码不受影响**（告警写 stderr，且在 `--json`/`--quiet` 下静默）。
 > 不需要推送时用 `--no-notify`（单次）或 `NOTIFY_ENABLED=false`（全局）关闭。
 
-**健康态（无告警）是否推送**：默认 `NOTIFY_ON_ALERT_ONLY=false` 时，各扫描器只要有告警就推；
-若将其设为 `true`（常见做法，避免正常状态刷屏），则**仅异常时推送**。例外：
-- `container` 子命令：想要「全部正常也推送各容器状态清单」时，在**统一配置 `server-scan.conf`**
-  中设 `CONTAINER_NOTIFY_ALWAYS=true`，或用命令行 `--notify` 临时开启；二者均会覆盖
-  全局 `NOTIFY_ON_ALERT_ONLY=true`，让正常巡检也发出通知（通知头部含主机名，与磁盘等一致）。
-  注意 `CONTAINER_NOTIFY_ALWAYS` 是 `server-scan.conf` 的键，**不要写进 `notify.conf`**。
-- `service` 子命令：对应 `SERVICE_NOTIFY_ALWAYS=true`（同样在 `server-scan.conf`）。
+**健康态（无告警）是否推送**：由各扫描器统一遵循 `NOTIFY_ON_ALERT_ONLY`——
+`false`（默认）时正常也会推送；设为 `true`（常见做法，避免正常状态刷屏）则**仅异常时推送**。
+所有扫描器（overview/disk/cpu/network/security/container/service）语义一致，不做模块级特殊覆盖。
+`--notify` 仅用于确保通知开启（默认本就启用），不会绕过 `NOTIFY_ON_ALERT_ONLY`。
+**所有通知（含 `--notify-test`）头部均附带主机名**，便于在多机环境中区分来源。
 
 ### 配置优先级
 

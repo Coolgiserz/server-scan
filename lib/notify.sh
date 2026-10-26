@@ -29,18 +29,18 @@
 # ------------------------------------------------------------------------------
 # 默认启用通知推送（扫描即推送）；未配置 webhook 时只告警不阻断，
 # 依旧可通过 NOTIFY_ENABLED=false 或 --no-notify 关闭
-NOTIFY_ENABLED="${NOTIFY_ENABLED:-true}"             # 是否启用通知推送
-NOTIFY_CHANNEL="${NOTIFY_CHANNEL:-feishu}"           # 通知渠道: feishu
-NOTIFY_WEBHOOK="${NOTIFY_WEBHOOK:-}"                 # Webhook 地址
-NOTIFY_SECRET="${NOTIFY_SECRET:-}"                   # 签名密钥（飞书安全设置，可选）
-NOTIFY_MSG_TYPE="${NOTIFY_MSG_TYPE:-text}"           # 消息类型: text | card
-NOTIFY_MODE="${NOTIFY_MODE:-summary}"                # 内容模式: summary(摘要) | full(全文)
-NOTIFY_MAX_BYTES="${NOTIFY_MAX_BYTES:-20000}"        # 全文模式下正文最大字节数
-NOTIFY_TIMEOUT="${NOTIFY_TIMEOUT:-10}"               # HTTP 请求超时（秒）
+NOTIFY_ENABLED="${NOTIFY_ENABLED:-true}"              # 是否启用通知推送
+NOTIFY_CHANNEL="${NOTIFY_CHANNEL:-feishu}"            # 通知渠道: feishu
+NOTIFY_WEBHOOK="${NOTIFY_WEBHOOK:-}"                  # Webhook 地址
+NOTIFY_SECRET="${NOTIFY_SECRET:-}"                    # 签名密钥（飞书安全设置，可选）
+NOTIFY_MSG_TYPE="${NOTIFY_MSG_TYPE:-text}"            # 消息类型: text | card
+NOTIFY_MODE="${NOTIFY_MODE:-summary}"                 # 内容模式: summary(摘要) | full(全文)
+NOTIFY_MAX_BYTES="${NOTIFY_MAX_BYTES:-20000}"         # 全文模式下正文最大字节数
+NOTIFY_TIMEOUT="${NOTIFY_TIMEOUT:-10}"                # HTTP 请求超时（秒）
 NOTIFY_ON_ALERT_ONLY="${NOTIFY_ON_ALERT_ONLY:-false}" # 仅在检测到告警时发送
-NOTIFY_MENTION_ALL="${NOTIFY_MENTION_ALL:-false}"    # 是否 @所有人（飞书）
-NOTIFY_MENTION_IDS="${NOTIFY_MENTION_IDS:-}"         # @指定用户 ID，逗号分隔（飞书）
-NOTIFY_SUMMARY_LINES="${NOTIFY_SUMMARY_LINES:-20}"   # 摘要模式提取的告警行上限
+NOTIFY_MENTION_ALL="${NOTIFY_MENTION_ALL:-false}"     # 是否 @所有人（飞书）
+NOTIFY_MENTION_IDS="${NOTIFY_MENTION_IDS:-}"          # @指定用户 ID，逗号分隔（飞书）
+NOTIFY_SUMMARY_LINES="${NOTIFY_SUMMARY_LINES:-20}"    # 摘要模式提取的告警行上限
 # 表格呈现方式（飞书 text 与卡片 lark_md 均不支持 Markdown 表格）:
 #   kv   - 转为 "🔴 **维度**: 说明" 列表，两种消息类型下都美观（默认）
 #   code - 保留表格并包裹代码块，卡片下等宽对齐
@@ -381,7 +381,8 @@ _ss_notify_format_tables() {
 _ss_notify_read_full() {
     local report_path="$1"
     local content
-    content=$(_ss_notify_format_tables <"$report_path" 2>/dev/null)
+    # keep_first=0：报告表格首行为表头（已提取的零散告警行无表头时再传 1）
+    content=$(_ss_notify_format_tables 0 <"$report_path" 2>/dev/null)
 
     local out
     out=$(printf '%s' "$content" | head -c "$NOTIFY_MAX_BYTES" 2>/dev/null |
@@ -401,6 +402,20 @@ _ss_notify_read_full() {
 # ------------------------------------------------------------------------------
 # 构建消息正文
 # ------------------------------------------------------------------------------
+# 鲁棒获取主机名：优先 hostname 命令，回退 $HOSTNAME，最后 unknown
+# （避免 cron / 精简环境 / 容器内 PATH 缺失导致主机名为空，使通知失去主机标识）
+_ss_hostname() {
+    local h
+    h=$(hostname 2>/dev/null)
+    if [ -z "$h" ]; then
+        h="${HOSTNAME:-}"
+    fi
+    if [ -z "$h" ]; then
+        h="unknown"
+    fi
+    printf '%s' "$h"
+}
+
 _ss_notify_build_content() {
     local title="$1"
     local report_path="$2"
@@ -437,7 +452,7 @@ _ss_notify_build_content() {
     local text
     text=$(printf '%s\n%s\n%s\n%s\n\n%s' \
         "$(ss::msgf MSG_NOTIFY_HEADER_TITLE "$title")" \
-        "$(ss::msgf MSG_NOTIFY_HEADER_HOST "$(hostname)")" \
+        "$(ss::msgf MSG_NOTIFY_HEADER_HOST "$(_ss_hostname)")" \
         "$(ss::msgf MSG_NOTIFY_HEADER_TIME "$(date '+%Y-%m-%d %H:%M:%S')")" \
         "$(ss::msgf MSG_NOTIFY_HEADER_REPORT "$report_path")" \
         "$body")
@@ -678,7 +693,7 @@ ss::notify_test() {
 
     local content
     content=$(printf '%s\n%s\n%s' \
-        "$(ss::msgf MSG_NOTIFY_TEST_TITLE "$(hostname)")" \
+        "$(ss::msgf MSG_NOTIFY_TEST_TITLE "$(_ss_hostname)")" \
         "$(ss::msgf MSG_NOTIFY_HEADER_TIME "$(date '+%Y-%m-%d %H:%M:%S')")" \
         "$(ss::msg MSG_NOTIFY_TEST_BODY)")
 

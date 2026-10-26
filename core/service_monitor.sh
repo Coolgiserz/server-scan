@@ -8,7 +8,7 @@
 #         支持 SERVICE_<大写服务名>_UNIT / _PROCESS / _PORT 按服务覆盖。
 #         检测到异常时写入告警库并通过飞书通知（notify.sh）推送摘要，
 #         通知正文包含异常服务名、异常状态与检测时间。
-#         默认仅异常时推送（SERVICE_NOTIFY_ALWAYS=true 可改为正常也推送）。
+#         是否发送由统一配置 NOTIFY_ON_ALERT_ONLY 决定（true 仅异常推送，false 正常也推）。
 #         单次扫描模型，适配 crontab 或外部定时调度系统触发。
 # 依赖:   ps/awk/grep/sed/tr/sort；Linux: ss（兜底 netstat）、systemctl（可选）；
 #         macOS: netstat（无 systemd，自动跳过 unit 信号）
@@ -21,7 +21,6 @@ REPORT_PATH="${REPORT_PATH:-}"
 
 # 服务扫描默认配置（可通过配置文件 SERVICE_* 或命令行覆盖）
 SERVICE_NAMES="${SERVICE_NAMES:-}"
-SERVICE_NOTIFY_ALWAYS="${SERVICE_NOTIFY_ALWAYS:-false}"
 SERVICE_PROBE_TIMEOUT="${SERVICE_PROBE_TIMEOUT:-5}"
 
 # 定位项目根目录
@@ -667,9 +666,6 @@ if [ "$NO_TARGETS" = "true" ]; then
     echo "> $(ss::msg MSG_SERVICE_CONCLUSION_NO_TARGETS)"
 elif [ "$_abnormal" -eq 0 ]; then
     echo "> $(ss::msgf MSG_SERVICE_CONCLUSION_OK "$_total")"
-    if [ "$SERVICE_NOTIFY_ALWAYS" != "true" ]; then
-        echo "> $(ss::msg MSG_SERVICE_CONCLUSION_NOTIFY_SKIP)"
-    fi
 else
     echo "> $(ss::msgf MSG_SERVICE_CONCLUSION_ALERT "$_total" "$_normal" "$_abnormal")"
     echo "> $(ss::msg MSG_SERVICE_CONCLUSION_HINT)"
@@ -698,15 +694,9 @@ if [ "$JSON_OUTPUT" = "true" ]; then
 fi
 
 # 发送告警通知（飞书 webhook + 可选签名）
-# 默认仅异常时推送：全部正常且未开启 SERVICE_NOTIFY_ALWAYS 时静默跳过，
-# 终端输出跳过原因（report_end 已关闭 fd3，直接写 stderr 并尊重 QUIET）
-if [ "$_abnormal" -eq 0 ] && [ "$SERVICE_NOTIFY_ALWAYS" != "true" ]; then
-    if [ "$QUIET" != "true" ]; then
-        printf '\033[1;34mℹ️  %s\033[0m\n' "$(ss::msg MSG_SERVICE_NOTIFY_SKIP)" >&2
-    fi
-else
-    ss::notify_send "$(ss::msg MSG_SERVICE_REPORT_TITLE)" "$REPORT_PATH" "$_summary" || true
-fi
+# 是否发送由统一配置 NOTIFY_ON_ALERT_ONLY 决定（true 仅异常推送，false 正常也推），
+# 与 disk/cpu 等扫描器语义一致；推送失败不影响主流程
+ss::notify_send "$(ss::msg MSG_SERVICE_REPORT_TITLE)" "$REPORT_PATH" "$_summary" || true
 
 # 退出码: 0=正常 1=存在告警
 if [ "$(ss::alerts_count)" -gt 0 ]; then
